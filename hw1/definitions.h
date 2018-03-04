@@ -19,6 +19,15 @@ typedef struct server_message {
 	coordinate object_pos[4];
 } server_message;
 
+coordinate addCoordinate(coordinate a, coordinate b) {
+	coordinate c;
+	c.x = a.x + b.x;
+	c.y = a.y + b.y;
+}
+
+int mhDistance(coordinate a, coordinate b) {
+	return abs(a.x - b.x) + abs(a.y - b.y);
+}
 
 // to write in the process IDs of hunters and preys
 pid_t preyPIDS;
