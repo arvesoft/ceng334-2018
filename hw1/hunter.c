@@ -46,7 +46,7 @@ int main(int argc, char* argv[])
             if(!isBlocked(dest, data_received.object_count, data_received.object_pos, map_width, map_height))
             {
                 int dest_distance = mhDistance(dest, data_received.adv_pos);
-                if(dest_distance > adv_distance) {
+                if(dest_distance < adv_distance) {
                     possible_moves[move_count] = dest;
                     move_count++;
                 }
