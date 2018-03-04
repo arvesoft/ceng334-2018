@@ -4,7 +4,10 @@
 server_message readDataFromServer();
 
 int isBlocked(coordinate a, int count, coordinate* blocked_coordinates, int map_width, int map_height) {
-    //TODO : add out of map check
+    
+    if((a.x < 0 || a.x >= map_width) || (a.y < 0 || a.y >= map_height)) {
+        return 1;
+    }
     for(int i=0; i<count; i++) {
         if(a.x == blocked_coordinates[i].x &&
            a.y == blocked_coordinates[i].y) {
@@ -33,7 +36,7 @@ int main(int argc, char* argv[])
     coordinate cur_loc;
 
     while(1) {
-        // Read the data somehow
+        //TODO: Read the data somehow
         server_message data_received = readDataFromServer(); // = read from pipe/socket?
         cur_loc = data_received.pos;
         int adv_distance = mhDistance(cur_loc, data_received.adv_pos);
@@ -52,7 +55,14 @@ int main(int argc, char* argv[])
             }
         }
 
-
+        ph_message r;
+        if(move_count > 0) {
+            r.move_request = possible_moves[0];
+        } else {
+            r.move_request = cur_loc;
+        }
+        //TODO: make move request
+        usleep(10000*(1+rand()%9));
     }
 
 

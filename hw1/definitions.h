@@ -19,6 +19,10 @@ typedef struct server_message {
 	coordinate object_pos[4];
 } server_message;
 
+typedef struct ph_message {
+	coordinate move_request;
+} ph_message;
+
 coordinate addCoordinate(coordinate a, coordinate b) {
 	coordinate c;
 	c.x = a.x + b.x;
