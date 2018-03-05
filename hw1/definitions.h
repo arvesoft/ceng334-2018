@@ -5,7 +5,7 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
-#include <math.h>
+#include <stdlib.h>
 
 typedef struct coordinate {
   int x;
@@ -46,15 +46,15 @@ coordinate Move(coordinate cur, int direction) {
   return cur;
 }
 
-enum ClientType {
-  HUNTER = 0,
-  PREY = 1,
+enum ClientStatus {
+  ALIVE = 0,
+  DEAD = 1,
 };
 
 typedef struct {
   coordinate pos;
   int energy;
-  enum ClientType client_type;
+  enum ClientStatus client_status;
   pid_t pid;
   int pipe_fd[2];
 } Client;

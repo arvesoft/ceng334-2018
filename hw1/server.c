@@ -139,7 +139,7 @@ void InitializeClients() {
       execv("./prey", argv);
     }
     close(preys[i].pipe_fd[CLIENT_FD]);
-    nfds = max(nfds, preys[i].pipe_fd[SERVER_FD]);
+    nfds = max(nfds, preys[i].pipe_fd[SERVER_FD]+1);
     InformPrey(i);
   }
   for (int i = 0; i < number_of_hunters; i++) {
@@ -152,9 +152,28 @@ void InitializeClients() {
       execv("./hunter", argv);
     }
     close(hunters[i].pipe_fd[CLIENT_FD]);
-    nfds = max(nfds, preys[i].pipe_fd[SERVER_FD]);
+    nfds = max(nfds, preys[i].pipe_fd[SERVER_FD]+1);
     InformHunter(i);
   }
+}
+
+int BlockedBy(coordinate a, char type) {
+  const char elem = map[a.x][a.y];
+  if (elem == 'X') {
+    return 2; // Blocked By Obstacle
+  } else if (elem == type) {
+    return 3; // Blocked By Friendly Unit
+  } else if (elem == ' ') {
+    return 0; // Not Blocked
+  } else {
+    return 1; // Not Blocked Buy Adversary
+  }
+}
+
+void Kill(Client* client) {
+  signal(SIGKILL, client->pid);
+  waitpid(client->pid, NULL, 0);
+  client->client_status = DEAD;
 }
 
 void GameLoop() {
@@ -178,11 +197,37 @@ void GameLoop() {
     }
     for (int i = 0; i < number_of_preys; i++) {
       if (FD_ISSET(preys[i].pipe_fd[SERVER_FD], &read_fds)) {
+        ph_message phm;
+        read(preys[i].pipe_fd[SERVER_FD], &phm, sizeof(phm));
+        coordinate request = phm.move_request;
+        int blocking_unit = BlockedBy(request, 'P');
+        if(blocking_unit == 0 || blocking_unit == 1) {
+          preys[i].pos.x = request.x;
+          preys[i].pos.y = request.y;
+        }
+        InformPrey(i);
         // Process preys[i]
       }
     }
     for (int i = 0; i < number_of_hunters; i++) {
       if (FD_ISSET(hunters[i].pipe_fd[SERVER_FD], &read_fds)) {
+        ph_message phm;
+        read(hunters[i].pipe_fd[SERVER_FD], &phm, sizeof(phm));
+        coordinate request = phm.move_request;
+        hunters[i].energy--;
+        int blocking_unit = BlockedBy(request, 'H');
+        if(blocking_unit == 0) {
+          hunters[i].pos.x = request.x;
+          hunters[i].pos.y = request.y;
+        } else if (blocking_unit == 1) {
+          for(int j = 0; j < number_of_preys; j++) {
+            if(preys[j].pos.x == request.x && preys[j].pos.y == request.y) {
+              hunters[i].energy += preys[j].energy;
+              Kill(preys+j);
+            }
+          }
+        }
+        InformHunter(i);
         // Process hunters[i]
       }
     }

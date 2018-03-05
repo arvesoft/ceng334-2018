@@ -1,66 +1,54 @@
 #include <stdio.h>
+#include <unistd.h>
 #include "definitions.h"
 
-server_message readDataFromServer();
-
-int isBlocked(coordinate a, int count, coordinate* blocked_coordinates, int map_width, int map_height) {
-    
-    if((a.x < 0 || a.x >= map_width) || (a.y < 0 || a.y >= map_height)) {
+int IsBlocked(const coordinate a, const int count, const coordinate* blocked_coordinates) {
+  for(int i=0; i<count; i++) {
+    if(a.x == blocked_coordinates[i].x && a.y == blocked_coordinates[i].y) {
         return 1;
     }
-    for(int i=0; i<count; i++) {
-        if(a.x == blocked_coordinates[i].x &&
-           a.y == blocked_coordinates[i].y) {
-               return 1;
-           }
+  }
+  return 0;
+}
+
+void FillMessage(ph_message* const phm, const coordinate cur_loc ,const int move_count, const coordinate* possible_moves) {
+  if(move_count > 0) {
+    phm->move_request = possible_moves[0];
+  } else {
+    phm->move_request = cur_loc;
+  }
+}
+
+void FindMoves(coordinate* possible_moves, int* move_count, const server_message* sm, const int map_width, const int map_height) {
+  int min_distance = mhDistance(sm->pos, sm->adv_pos);
+  for(int i=0; i<4; i++) {
+    coordinate dest = Move(sm->pos, i);
+    if(InRange(dest, map_width, map_height) && !IsBlocked(dest, sm->object_count, sm->object_pos))
+    {
+      int dest_distance = mhDistance(dest, sm->adv_pos);
+      if(dest_distance > min_distance) {
+        *(possible_moves+(*move_count)) = dest;
+        (*move_count)++;
+      }
     }
-    return 0;
+  }
 }
 
 int main(int argc, char* argv[])
 {
-    if(argc != 3) {
-        exit(0);
-    }
-    int map_width = atoi(argv[1]);
-    int map_height = atoi(argv[2]);
-    coordinate offset_list[] =  { 
-                                    {.x = -1, .y = 0},
-                                    {.x = 0, .y = -1},
-                                    {.x = 1, .y = 0},
-                                    {.x = 0, .y = 1}
-                                };
-
-    coordinate cur_loc;
-
-    while(1) {
-        //TODO: Read the data somehow
-        server_message data_received = readDataFromServer(); // = read from pipe/socket?
-        cur_loc = data_received.pos;
-        int adv_distance = mhDistance(cur_loc, data_received.adv_pos);
-        coordinate possible_moves[4];
-        int move_count=0;
-
-        for(int i=0; i<4; i++) {
-            coordinate dest = addCoordinate(cur_loc, offset_list[i]);
-            if(!isBlocked(dest, data_received.object_count, data_received.object_pos, map_width, map_height))
-            {
-                int dest_distance = mhDistance(dest, data_received.adv_pos);
-                if(dest_distance > adv_distance) {
-                    possible_moves[move_count] = dest;
-                    move_count++;
-                }
-            }
-        }
-
-        ph_message r;
-        if(move_count > 0) {
-            r.move_request = possible_moves[0];
-        } else {
-            r.move_request = cur_loc;
-        }
-        //TODO: make move request
-        usleep(10000*(1+rand()%9));
-    }
-    return 0;
+  int map_width = atoi(argv[0]);
+  int map_height = atoi(argv[1]);
+  coordinate possible_moves[4];
+  int move_count=0;
+  ph_message phm;
+  server_message sm;
+  while(1) {
+    move_count = 0;
+    read(STDIN_FILENO, &sm, sizeof(sm));
+    FindMoves(possible_moves, &move_count, &sm, map_width, map_height);
+    FillMessage(&phm, sm.pos, move_count, possible_moves);
+    write(STDOUT_FILENO, &phm, sizeof(phm));
+    usleep(10000*(1+rand()%9));
+  }
+  return 0;
 }
