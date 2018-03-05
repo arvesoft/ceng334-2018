@@ -170,9 +170,11 @@ int BlockedBy(coordinate a, char type) {
 }
 
 void Kill(Client* client) {
-  //kill(client->pid, SIGTERM);
-  //waitpid(client->pid, NULL, 0);
+  printf("KILL %d\n", client->pid);
+  kill(client->pid, SIGTERM);
+  waitpid(client->pid, NULL, 0);
   client->client_status = DEAD;
+  printf("DEAD %d\n", client->pid);
 }
 
 void UpdateMap() {
@@ -236,7 +238,7 @@ void GameLoop() {
         read(hunters[i].pipe_fd[SERVER_FD], &phm, sizeof(phm));
         coordinate request = phm.move_request;
         hunters[i].energy--;
-        printf("Hunter %d Energy: %d\n", i, hunters[i].energy);
+        
         int blocking_unit = BlockedBy(request, 'H');
         if(blocking_unit == 0 || blocking_unit == 1) {
           hunters[i].pos.x = request.x;
@@ -253,12 +255,15 @@ void GameLoop() {
             } 
           }
         }
+        printf("Hunter %d Energy: %d\n", i, hunters[i].energy);
         if(hunters[i].energy <= 0) {
           Kill(hunters+i);
           remaining_hunters--;
           is_map_updated = 1;
+        } else {
+          InformHunter(i);
         }
-        InformHunter(i);
+        
       }
     }
 
