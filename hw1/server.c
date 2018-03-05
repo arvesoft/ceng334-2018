@@ -19,6 +19,7 @@ Client* hunters;
 int number_of_preys;
 Client* preys;
 char** map;
+int nfds;
 
 void ReadInput() {
   scanf("%d%d", &map_width, &map_height);
@@ -105,7 +106,7 @@ void InformPrey(int idx) {
 }
 
 void InformHunter(int idx) {
-  Client* hunter = preys + idx;
+  Client* hunter = hunters + idx;
   server_message sm;
   sm.pos = hunter->pos;
   sm.adv_pos = preys[0].pos;
@@ -138,20 +139,53 @@ void InitializeClients() {
       execv("./prey", argv);
     }
     close(preys[i].pipe_fd[CLIENT_FD]);
+    nfds = max(nfds, preys[i].pipe_fd[SERVER_FD]);
     InformPrey(i);
   }
   for (int i = 0; i < number_of_hunters; i++) {
     PIPE(hunters[i].pipe_fd);
     hunters[i].pid = fork();
     if (!hunters[i].pid) {
-      // client will use fd[0] for read and write.
-      dup2(hunters[i].pipe_fd[0], STDIN_FILENO);
-      dup2(hunters[i].pipe_fd[0], STDOUT_FILENO);
-      close(hunters[i].pipe_fd[1]);
+      dup2(hunters[i].pipe_fd[CLIENT_FD], STDIN_FILENO);
+      dup2(hunters[i].pipe_fd[CLIENT_FD], STDOUT_FILENO);
+      close(hunters[i].pipe_fd[SERVER_FD]);
       execv("./hunter", argv);
     }
-    close(hunters[i].pipe_fd[0]);
+    close(hunters[i].pipe_fd[CLIENT_FD]);
+    nfds = max(nfds, preys[i].pipe_fd[SERVER_FD]);
     InformHunter(i);
+  }
+}
+
+void GameLoop() {
+  int remaining_hunters = number_of_hunters;
+  int remaining_preys = number_of_preys;
+  fd_set read_fds;
+  FD_ZERO(&read_fds);
+  for (int i = 0; i < number_of_preys; i++) {
+    FD_SET(preys[i].pipe_fd[SERVER_FD], &read_fds);
+  }
+  for (int i = 0; i < number_of_hunters; i++) {
+    FD_SET(hunters[i].pipe_fd[SERVER_FD], &read_fds);
+  }
+
+  while (remaining_hunters && remaining_preys) {
+    const int retval = select(nfds, &read_fds, NULL, NULL, NULL);
+    if (retval == -1) {
+      perror("select failed");
+    } else if (!retval) {
+      continue;
+    }
+    for (int i = 0; i < number_of_preys; i++) {
+      if (FD_ISSET(preys[i].pipe_fd[SERVER_FD], &read_fds)) {
+        // Process preys[i]
+      }
+    }
+    for (int i = 0; i < number_of_hunters; i++) {
+      if (FD_ISSET(hunters[i].pipe_fd[SERVER_FD], &read_fds)) {
+        // Process hunters[i]
+      }
+    }
   }
 }
 
@@ -159,6 +193,7 @@ int main() {
   ReadInput();
   PrintMap();
   InitializeClients();
+  GameLoop();
   Finish();
   return 0;
 }

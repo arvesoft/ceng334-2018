@@ -2,6 +2,8 @@
 #define __DEFINITIONS_H__
 #define CLIENT_FD 0
 #define SERVER_FD 1
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
 
 #include <math.h>
 
