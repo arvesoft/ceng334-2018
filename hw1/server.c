@@ -170,11 +170,9 @@ int BlockedBy(coordinate a, char type) {
 }
 
 void Kill(Client* client) {
-  printf("KILL %d\n", client->pid);
   kill(client->pid, SIGTERM);
   waitpid(client->pid, NULL, 0);
   client->client_status = DEAD;
-  printf("DEAD %d\n", client->pid);
 }
 
 void UpdateMap() {
@@ -210,7 +208,6 @@ void GameLoop() {
 
   while (remaining_hunters && remaining_preys) {
     sleep(1); //REMOVE THIS LATER
-    printf("H: %d P: %d \n", remaining_hunters, remaining_preys);
     const int retval = select(nfds, &read_fds, NULL, NULL, NULL);
     if (retval == -1) {
       perror("select failed");
@@ -237,12 +234,11 @@ void GameLoop() {
         ph_message phm;
         read(hunters[i].pipe_fd[SERVER_FD], &phm, sizeof(phm));
         coordinate request = phm.move_request;
-        hunters[i].energy--;
-        
         int blocking_unit = BlockedBy(request, 'H');
         if(blocking_unit == 0 || blocking_unit == 1) {
           hunters[i].pos.x = request.x;
           hunters[i].pos.y = request.y;
+          hunters[i].energy--;
           is_map_updated = 1;
           if (blocking_unit == 1) { // If Hunter moved onto a prey
             for(int j=0; j<number_of_preys; j++) {
@@ -255,7 +251,6 @@ void GameLoop() {
             } 
           }
         }
-        printf("Hunter %d Energy: %d\n", i, hunters[i].energy);
         if(hunters[i].energy <= 0) {
           Kill(hunters+i);
           remaining_hunters--;
