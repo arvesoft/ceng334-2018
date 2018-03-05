@@ -43,7 +43,7 @@ int main(int argc, char* argv[])
   ph_message phm;
   server_message sm;
   while(1) {
-    move_count=0;
+    move_count = 0;
     read(STDIN_FILENO, &sm, sizeof(sm));
     FindMoves(possible_moves, &move_count, &sm, map_width, map_height);
     FillMessage(&phm, sm.pos, move_count, possible_moves);
