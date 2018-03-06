@@ -58,14 +58,14 @@ void ReadInput() {
 }
 
 void Finish() {
-  for(int i = 0; i < number_of_preys; i++) {
-    if(preys[i].client_status == ALIVE) {
-      Kill(preys+i);
+  for (int i = 0; i < number_of_preys; i++) {
+    if (preys[i].client_status == ALIVE) {
+      Kill(preys + i);
     }
   }
-  for(int i = 0; i<number_of_hunters; i++) {
-    if(hunters[i].client_status == ALIVE) {
-      Kill(hunters+i);
+  for (int i = 0; i < number_of_hunters; i++) {
+    if (hunters[i].client_status == ALIVE) {
+      Kill(hunters + i);
     }
   }
   free(preys);
@@ -156,7 +156,7 @@ void InitializeClients() {
       execv("./prey", argv);
     }
     close(preys[i].pipe_fd[CLIENT_FD]);
-    nfds = max(nfds, preys[i].pipe_fd[SERVER_FD]+1);
+    nfds = max(nfds, preys[i].pipe_fd[SERVER_FD] + 1);
     InformPrey(i);
   }
   for (int i = 0; i < number_of_hunters; i++) {
@@ -169,7 +169,7 @@ void InitializeClients() {
       execv("./hunter", argv);
     }
     close(hunters[i].pipe_fd[CLIENT_FD]);
-    nfds = max(nfds, hunters[i].pipe_fd[SERVER_FD]+1);
+    nfds = max(nfds, hunters[i].pipe_fd[SERVER_FD] + 1);
     InformHunter(i);
   }
 }
@@ -177,30 +177,30 @@ void InitializeClients() {
 int BlockedBy(coordinate a, char type) {
   const char elem = map[a.x][a.y];
   if (elem == 'X') {
-    return 2; // Blocked By Obstacle
+    return 2;  // Blocked By Obstacle
   } else if (elem == type) {
-    return 3; // Blocked By Friendly Unit
+    return 3;  // Blocked By Friendly Unit
   } else if (elem == ' ') {
-    return 0; // Not Blocked
+    return 0;  // Not Blocked
   } else {
-    return 1; // Not Blocked Buy Adversary
+    return 1;  // Not Blocked Buy Adversary
   }
 }
 
 void UpdateMap() {
-  for(int i=0; i<map_height; i++) {
+  for (int i = 0; i < map_height; i++) {
     memset(map[i], ' ', map_width);
   }
-  for(int i=0; i<number_of_obstacles; i++) {
+  for (int i = 0; i < number_of_obstacles; i++) {
     map[obstacles[i].x][obstacles[i].y] = 'X';
   }
-  for(int i=0; i<number_of_preys; i++) {
-    if(preys[i].client_status==ALIVE) {
+  for (int i = 0; i < number_of_preys; i++) {
+    if (preys[i].client_status == ALIVE) {
       map[preys[i].pos.x][preys[i].pos.y] = 'P';
     }
   }
-  for(int i=0; i<number_of_hunters; i++) {
-    if(hunters[i].client_status==ALIVE) {
+  for (int i = 0; i < number_of_hunters; i++) {
+    if (hunters[i].client_status == ALIVE) {
       map[hunters[i].pos.x][hunters[i].pos.y] = 'H';
     }
   }
@@ -210,20 +210,20 @@ void GameLoop() {
   int remaining_hunters = number_of_hunters;
   int remaining_preys = number_of_preys;
   fd_set read_fds;
-  
+
   while (remaining_hunters && remaining_preys) {
     FD_ZERO(&read_fds);
     for (int i = 0; i < number_of_preys; i++) {
-      if(preys[i].client_status == ALIVE) {
+      if (preys[i].client_status == ALIVE) {
         FD_SET(preys[i].pipe_fd[SERVER_FD], &read_fds);
       }
     }
     for (int i = 0; i < number_of_hunters; i++) {
-      if(hunters[i].client_status == ALIVE) {
+      if (hunters[i].client_status == ALIVE) {
         FD_SET(hunters[i].pipe_fd[SERVER_FD], &read_fds);
       }
     }
-    sleep(1); //REMOVE THIS LATER
+    sleep(1);  // REMOVE THIS LATER
     const int retval = select(nfds, &read_fds, NULL, NULL, NULL);
     if (retval == -1) {
       perror("select failed");
@@ -232,12 +232,13 @@ void GameLoop() {
     }
     int is_map_updated = 0;
     for (int i = 0; i < number_of_preys; i++) {
-      if (preys[i].client_status==ALIVE && FD_ISSET(preys[i].pipe_fd[SERVER_FD], &read_fds)) {
+      if (preys[i].client_status == ALIVE &&
+          FD_ISSET(preys[i].pipe_fd[SERVER_FD], &read_fds)) {
         ph_message phm;
         read(preys[i].pipe_fd[SERVER_FD], &phm, sizeof(phm));
         coordinate request = phm.move_request;
         int blocking_unit = BlockedBy(request, 'P');
-        if(blocking_unit == 0 || blocking_unit == 1) {
+        if (blocking_unit == 0 || blocking_unit == 1) {
           preys[i].pos.x = request.x;
           preys[i].pos.y = request.y;
           is_map_updated = 1;
@@ -246,39 +247,40 @@ void GameLoop() {
       }
     }
     for (int i = 0; i < number_of_hunters; i++) {
-      if (hunters[i].client_status==ALIVE && FD_ISSET(hunters[i].pipe_fd[SERVER_FD], &read_fds)) {
+      if (hunters[i].client_status == ALIVE &&
+          FD_ISSET(hunters[i].pipe_fd[SERVER_FD], &read_fds)) {
         ph_message phm;
         read(hunters[i].pipe_fd[SERVER_FD], &phm, sizeof(phm));
         coordinate request = phm.move_request;
         int blocking_unit = BlockedBy(request, 'H');
-        if(blocking_unit == 0 || blocking_unit == 1) {
+        if (blocking_unit == 0 || blocking_unit == 1) {
           hunters[i].pos.x = request.x;
           hunters[i].pos.y = request.y;
           hunters[i].energy--;
           is_map_updated = 1;
-          if (blocking_unit == 1) { // If Hunter moved onto a prey
-            for(int j=0; j<number_of_preys; j++) {
-              if(preys[j].client_status == ALIVE && preys[j].pos.x == request.x && preys[j].pos.y == request.y) {
+          if (blocking_unit == 1) {  // If Hunter moved onto a prey
+            for (int j = 0; j < number_of_preys; j++) {
+              if (preys[j].client_status == ALIVE &&
+                  preys[j].pos.x == request.x && preys[j].pos.y == request.y) {
                 hunters[i].energy += preys[j].energy;
-                Kill(preys+j);
+                Kill(preys + j);
                 remaining_preys--;
                 break;
               }
-            } 
+            }
           }
         }
-        if(hunters[i].energy <= 0) {
-          Kill(hunters+i);
+        if (hunters[i].energy <= 0) {
+          Kill(hunters + i);
           remaining_hunters--;
           is_map_updated = 1;
         } else {
           InformHunter(i);
         }
-        
       }
     }
 
-    if(is_map_updated) {
+    if (is_map_updated) {
       UpdateMap();
       PrintMap();
     }
