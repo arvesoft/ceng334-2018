@@ -21,6 +21,13 @@ Client* preys;
 char** map;
 int nfds;
 
+void Kill(Client* client) {
+  close(client->pipe_fd[SERVER_FD]);
+  kill(client->pid, SIGTERM);
+  waitpid(client->pid, NULL, 0);
+  client->client_status = DEAD;
+}
+
 void ReadInput() {
   scanf("%d%d", &map_width, &map_height);
   scanf("%d", &number_of_obstacles);
@@ -51,6 +58,16 @@ void ReadInput() {
 }
 
 void Finish() {
+  for(int i = 0; i < number_of_preys; i++) {
+    if(preys[i].client_status == ALIVE) {
+      Kill(preys+i);
+    }
+  }
+  for(int i = 0; i<number_of_hunters; i++) {
+    if(hunters[i].client_status == ALIVE) {
+      Kill(hunters+i);
+    }
+  }
   free(preys);
   free(hunters);
   free(obstacles);
@@ -72,6 +89,7 @@ void PrintMap() {
     putchar('\n');
   }
   PrintFooter();
+  fflush(stdout);
 }
 
 void FillNeighbours(server_message* sm, const char type) {
@@ -169,12 +187,6 @@ int BlockedBy(coordinate a, char type) {
   }
 }
 
-void Kill(Client* client) {
-  kill(client->pid, SIGTERM);
-  waitpid(client->pid, NULL, 0);
-  client->client_status = DEAD;
-}
-
 void UpdateMap() {
   for(int i=0; i<map_height; i++) {
     memset(map[i], ' ', map_width);
@@ -198,15 +210,19 @@ void GameLoop() {
   int remaining_hunters = number_of_hunters;
   int remaining_preys = number_of_preys;
   fd_set read_fds;
-  FD_ZERO(&read_fds);
-  for (int i = 0; i < number_of_preys; i++) {
-    FD_SET(preys[i].pipe_fd[SERVER_FD], &read_fds);
-  }
-  for (int i = 0; i < number_of_hunters; i++) {
-    FD_SET(hunters[i].pipe_fd[SERVER_FD], &read_fds);
-  }
-
+  
   while (remaining_hunters && remaining_preys) {
+    FD_ZERO(&read_fds);
+    for (int i = 0; i < number_of_preys; i++) {
+      if(preys[i].client_status == ALIVE) {
+        FD_SET(preys[i].pipe_fd[SERVER_FD], &read_fds);
+      }
+    }
+    for (int i = 0; i < number_of_hunters; i++) {
+      if(hunters[i].client_status == ALIVE) {
+        FD_SET(hunters[i].pipe_fd[SERVER_FD], &read_fds);
+      }
+    }
     sleep(1); //REMOVE THIS LATER
     const int retval = select(nfds, &read_fds, NULL, NULL, NULL);
     if (retval == -1) {
