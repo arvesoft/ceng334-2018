@@ -7,11 +7,20 @@
 #define ANTwFOOD 'P'
 #define ANTwSLEEP 'S'
 #define ANTwFOODwSLEEP '$'
+#define IMPOSSIBLE 'Z'
+typedef sem_t Semaphore;
+
+struct Coordinate
+{
+	int x;
+	int y;
+} typedef Coordinate;
 
 
 int numberOfAnts;
 int numberOfFoods;
 int maxTimeInSeconds;
+Semaphore cellGuards[GRIDSIZE][GRIDSIZE];
 
 void readFromCommandLine(char* argv[])
 {
@@ -39,34 +48,222 @@ void initializeFoods(int foodCount)
 	for (int i = 0; i < foodCount; i++)
 	{
 		do {
-            a = rand() % GRIDSIZE;
-            b = rand() % GRIDSIZE;
+            a = GRIDSIZE-1;
+            b = GRIDSIZE-1;
         }while (lookCharAt(a,b) != '-');
 		putCharTo(a, b, FOOD);
 	}
 }
 
-void initializeAnts(int antCount)
+Coordinate coordinateCreator(int x, int y)
 {
+	Coordinate result;
+	result.x = x;
+	result.y = y;
+	return result;
+}
+
+Coordinate* initializeAnts(int antCount)
+{
+	Coordinate* coordinates;
+	coordinates = malloc(sizeof(Coordinate) * antCount);
 	int a,b;
 	for (int i = 0; i < antCount; i++)
 	{
 		do {
-            a = rand() % GRIDSIZE;
-            b = rand() % GRIDSIZE;
+            a = 0;
+            b = 0;
         }while (lookCharAt(a,b) != '-');
+		
 		putCharTo(a, b, ANT);
+		//~ printf("a: %d %d\n", a,b);
+		Coordinate current = coordinateCreator(a,b);
+		coordinates[i] = current;
 	}
+	return coordinates;
+}
+
+void initializeSemaphores()
+{
+	for (int i=0; i < GRIDSIZE; i++)
+	{
+		for (int j=0; j < GRIDSIZE; j++)
+		{
+			sem_init(&cellGuards[i][j], 1, 1);
+		}
+	}
+}
+
+bool canMoveTo(const int* x, const int* y)
+{
+	int xVal = *x;
+	int yVal = *y;
+	if (xVal >= 0 && yVal >= 0 && xVal<GRIDSIZE && yVal<GRIDSIZE)
+		return true;
+	else
+		return false;
+}
+
+char* neighborBringer(const int* x, const int* y)
+{
+	int xVal = *y;
+	int yVal = *x;
+	int leftX = xVal-1;
+	int rightX = xVal+1;
+	int upperY = yVal-1;
+	int lowerY = yVal+1;
+	
+	// eight neighbors
+	char* neighbors = malloc(sizeof(char)*8);
+	int i = 0;
+	char obj;
+	
+	// upperNeighbors
+	obj = IMPOSSIBLE;
+	if ( canMoveTo(&upperY, &leftX) )
+		obj = lookCharAt(upperY, leftX);
+	neighbors[i++] = obj;
+		
+	obj = IMPOSSIBLE;
+	if ( canMoveTo(&upperY, &xVal) )
+		obj = lookCharAt(upperY, xVal);
+	neighbors[i++] = obj;
+	
+	obj = IMPOSSIBLE;
+	if ( canMoveTo(&upperY, &rightX) )
+		obj = lookCharAt(upperY, rightX);
+	neighbors[i++] = obj;
+	
+	// middle neighbors
+	obj = IMPOSSIBLE;
+	if ( canMoveTo(&yVal, &leftX) )
+		obj = lookCharAt(yVal, leftX);
+	neighbors[i++] = obj;
+	
+	obj = IMPOSSIBLE;
+	if ( canMoveTo(&yVal, &rightX) )
+		obj = lookCharAt(yVal, rightX);
+	neighbors[i++] = obj;
+		
+	// bottom neighbors
+	obj = IMPOSSIBLE;
+	if ( canMoveTo(&lowerY, &leftX) )
+		obj = lookCharAt(lowerY, leftX);
+	neighbors[i++] = obj;
+	
+	obj = IMPOSSIBLE;
+	if ( canMoveTo(&lowerY, &xVal) )
+		obj = lookCharAt(lowerY, xVal);
+	neighbors[i++] = obj;
+	
+	obj = IMPOSSIBLE;
+	if ( canMoveTo(&lowerY, &rightX) )
+		obj = lookCharAt(lowerY, rightX);
+	neighbors[i++] = obj;
+	
+	return neighbors;
+}
+
+void coordinateUpdaterByDestination(int destination, int* x, int* y)
+{
+	// upper coordinates
+	if (destination == 0)
+	{
+		*x = (*x) -1;
+		*y = (*y) -1;
+	}
+	else if (destination == 1)
+	{
+		*y = (*y) -1;
+	}
+	else if (destination == 2)
+	{
+		*x = (*x) +1;
+		*y = (*y) -1;
+	}
+	
+	// middle coordinates
+	else if (destination == 3)
+	{
+		*x = (*x) -1;
+	}
+	else if (destination == 4)
+	{
+		*x = (*x) +1;
+	}
+	
+	// below coordinates
+	else if (destination == 5)
+	{
+		*x = (*x) -1;
+		*y = (*y) +1;
+	}
+	else if (destination == 6)
+	{
+		*y = (*y) +1;
+	}
+	else if (destination == 7)
+	{
+		*x = (*x) +1;
+		*y = (*y) +1;
+	}
+}
+	
+
+void statusANT(char* status, int* x, int* y)
+{
+	char* neighbors = neighborBringer(x, y);
+	bool foundFood = false;
+	for (int i=0; i < 8; i++)
+	{
+		if (neighbors[i] == FOOD)
+		{
+			//~ putCharTo(*x,*y, EMPTY);
+			coordinateUpdaterByDestination(i,y,x);
+			putCharTo(*x,*y, ANTwFOOD);
+			*status = ANTwFOOD;
+			foundFood = true;
+			break;
+		}
+	}
+	
+	// cannot find food, migrate to empty cell if possible
+	if (!foundFood)
+	{
+		for (int i=0; i < 8; i++)
+		{
+			if (neighbors[i] == EMPTY)
+			{
+				putCharTo(*x,*y, ANT);
+				coordinateUpdaterByDestination(i,y,x);
+				putCharTo(*x,*y, ANT);
+				//~ *status = ANTwSLEEP;
+				break;
+			}
+		}
+	}
+	
+	free(neighbors);
 }
 
 void* antRoutine(void* void_ptr)
 {
-	// dummy function for now
-	long int a = 1;
-	while (a < 1000000000)
+	// starting status
+	Coordinate* coordinatePointer = (Coordinate*) void_ptr;
+	Coordinate coord = *coordinatePointer;
+	int x = coord.x ;
+	int y = coord.y;
+	char status = ANT;
+	
+	while (1)
 	{
-		a++;
+		//~ printf("%d %d\n", x, y);
+		usleep(20000);
+		if (status == ANT)
+			statusANT(&status, &x, &y);
 	}
+	
+	
 }
 
 int main(int argc, char *argv[]) {
@@ -82,17 +279,19 @@ int main(int argc, char *argv[]) {
     // You must use putCharTo() and lookCharAt() to access/change the grid.
     // You should be delegating ants to separate threads
     
+    initializeSemaphores();
     initializeGridEmpty();
-    initializeAnts(numberOfAnts);
-    initializeFoods(numberOfFoods);
+    Coordinate* antCoordinates = initializeAnts(1);
+    initializeFoods(1);
     
+
     pthread_t antThreads[numberOfAnts];
-    int antIDs[numberOfAnts];
+    //~ int antIDs[numberOfAnts];
     
-    for(int i=0; i<numberOfAnts; i++)
+    for(int i=0; i<1; i++)
     {
-        antIDs[i] = i;
-        pthread_create(&antThreads[i], NULL, antRoutine, &antIDs[i] );
+        pthread_create(&antThreads[i], NULL, antRoutine, &antCoordinates[i] );
+        //~ printf("%d\n", i);
     }
     //////////////////////////////
 
