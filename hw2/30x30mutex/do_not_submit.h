@@ -6,6 +6,9 @@
 #include <signal.h>
 #include <time.h>
 
+// need to add to remove "usleep" implicit declaration warning
+#include <unistd.h>
+
 //////////////////////////////////////////
 // things you can access
 #define GRIDSIZE 30
@@ -171,7 +174,9 @@ void drawWindow() {
     }
     else{
         erase();
+        
         mvprintw(0, 0, "You need a bigger terminal window, you can resize");
+        mvprintw(1, 0, "%d %d", COLS, LINES);
         refresh();
     }
     
