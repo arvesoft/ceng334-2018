@@ -202,11 +202,15 @@ int main(int argc, char* argv[]) {
   // you have to have following command to initialize ncurses.
   startCurses();
 
-  // You can use following loop in your program. But pay attention to
-  // the function calls, they do not have any access control, you
-  // have to ensure that.
+  struct timespec time_start;
+  clock_gettime(CLOCK_MONOTONIC, &time_start);
   char c;
   while (TRUE) {
+    struct timespec time_now;
+    clock_gettime(CLOCK_MONOTONIC, &time_now);
+    double elapsed = (time_now.tv_sec - time_start.tv_sec) +
+                     (time_now.tv_nsec - time_start.tv_nsec) / 1.0e9;
+    if (elapsed > termination_time) break;
     drawWindow();
 
     c = 0;
