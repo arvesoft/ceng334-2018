@@ -144,7 +144,6 @@ void* AntRoutine(void* args) {
       while (ant_id < n_sleepers) {
         pthread_cond_wait(&sleeping_condition, &sleeping_mutex);
         n_sleepers = getSleeperN();
-        printf("I woke up: %zu %zu\n", ant_id, n_sleepers);
       }
       pthread_mutex_unlock(&sleeping_mutex);
       putCharTo(ant.cur_x, ant.cur_y, status);
