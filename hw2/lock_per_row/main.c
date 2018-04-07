@@ -248,5 +248,7 @@ int main(int argc, char* argv[]) {
   // do not forget freeing the resources you get
   endCurses();
 
+  free(ants);
+
   return 0;
 }
