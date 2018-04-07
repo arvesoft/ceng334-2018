@@ -26,7 +26,6 @@ pthread_mutex_t row_lock[GRIDSIZE];
 pthread_mutex_t delay_mutex;
 pthread_mutex_t sleeping_mutex;
 
-pthread_mutex_t sleeping_condition_mutex;
 pthread_cond_t sleeping_condition;
 
 Ant* ants;
@@ -164,9 +163,6 @@ void Initialize() {
     perror("Mutex init failed.");
   }
   if (pthread_mutex_init(&sleeping_mutex, NULL)) {
-    perror("Mutex init failed.");
-  }
-  if (pthread_mutex_init(&sleeping_condition_mutex, NULL)) {
     perror("Mutex init failed.");
   }
   if (pthread_cond_init(&sleeping_condition, NULL)) {
