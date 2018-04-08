@@ -8,6 +8,7 @@
 #define ANTwSLEEP 'S'
 #define ANTwFOODwSLEEP '$'
 #define IMPOSSIBLE 'Z'
+#define TIRED 'U'
 typedef sem_t Semaphore;
 
 struct Coordinate
@@ -48,8 +49,8 @@ void initializeFoods(int foodCount)
 	for (int i = 0; i < foodCount; i++)
 	{
 		do {
-            a = 0;
-            b = 0;
+            a = rand() % (GRIDSIZE-1);
+            b = rand() % (GRIDSIZE-1);
         }while (lookCharAt(a,b) != '-');
 		putCharTo(a, b, FOOD);
 	}
@@ -108,8 +109,8 @@ Coordinate* initializeAnts(int antCount)
 	for (int i = 0; i < antCount; i++)
 	{
 		do {
-            a = 1;
-            b = 1;
+            a = rand() % (GRIDSIZE-1);
+            b = rand() % (GRIDSIZE-1);
         }while (lookCharAt(a,b) != '-');
 		
 		putCharTo(a, b, ANT);
@@ -247,7 +248,7 @@ void coordinateUpdaterByDestination(int destination, int* x, int* y)
 }
 
 
-bool actionApplier(int* x, int* y, int code, char wantedCharacter, char updatedStatus)
+bool actionApplier(int* x, int* y, int code, char wantedCharacter, char leftOverCharacter, char updatedStatus, bool updateFlag)
 {	
 	int destX = *x;
 	int destY = *y;
@@ -267,12 +268,15 @@ bool actionApplier(int* x, int* y, int code, char wantedCharacter, char updatedS
 		char obj = lookCharAt(destY, destX);
 		if ( obj == wantedCharacter )
 		{
-			//~ printf("current: %d %d\n", *x, *y);
-			putCharTo(*y,*x,EMPTY);
-			*x = destX;
-			*y = destY;
-			//~ printf("updated: %d %d\n", *x, *y);
-			putCharTo(*y,*x, updatedStatus);
+			if (updateFlag)
+			{
+				//~ printf("current: %d %d\n", *x, *y);
+				putCharTo(*y,*x, leftOverCharacter);
+				*x = destX;
+				*y = destY;
+				//~ printf("updated: %d %d\n", *x, *y);
+				putCharTo(*y,*x, updatedStatus);
+			}
 			flag = true;
 		}
 	}
@@ -281,7 +285,7 @@ bool actionApplier(int* x, int* y, int code, char wantedCharacter, char updatedS
 	return flag;
 }
 
-bool randomActionTaker(int* x, int* y, char currentStatus, char wantedStatus, char updatedStatus)
+bool randomActionTaker(int* x, int* y, char wantedCharacter, char leftOverCharacter, char updatedStatus)
 {
 	int index = 0;
 	int list[] = {-1,-1,-1,-1,-1,-1,-1,-1};
@@ -303,58 +307,90 @@ bool randomActionTaker(int* x, int* y, char currentStatus, char wantedStatus, ch
 	for (int i=0; i<8 ; i++)
 	{
 		int direction = list[i];
-		if ( actionApplier(x,y,direction, wantedStatus, updatedStatus) )
+		if ( actionApplier(x,y,direction, wantedCharacter, leftOverCharacter, updatedStatus, true) )
 			return true;
 	}
 	return false;
 }
 
-bool actionTaker(int* x, int* y, char currentStatus, char leftOverStatus, char updatedStatus)
+bool actionTaker(int* x, int* y, char wantedCharacter, char leftOverCharacter, char updatedStatus)
 {	
-	// upperNeighbors
-	if ( actionApplier(x, y, 0, leftOverStatus, updatedStatus) )
-		return true;
-		
-	if ( actionApplier(x, y, 1, leftOverStatus, updatedStatus) )
-		return true;
-		
-	if ( actionApplier(x, y, 2, leftOverStatus, updatedStatus) )
-		return true;
-		
-	if ( actionApplier(x, y, 3, leftOverStatus, updatedStatus) )
-		return true;
-		
-	if ( actionApplier(x, y, 4, leftOverStatus, updatedStatus) )
-		return true;
-		
-	if ( actionApplier(x, y, 5, leftOverStatus, updatedStatus) )
-		return true;
-		
-	if ( actionApplier(x, y, 6, leftOverStatus, updatedStatus) )
-		return true;
-		
-	if ( actionApplier(x, y, 7, leftOverStatus, updatedStatus) )
-		return true;
-
+	for (int i=0; i<8; i++)
+	{
+		if ( actionApplier(x, y, 0, wantedCharacter, leftOverCharacter, updatedStatus, true) )
+			return true;
+	}
 	return false;
 }
-	
+
+bool doIHaveFoodNeighbor(int x, int y)
+{
+	char wantedCharacter = FOOD;
+	char leftOverCharacter = FOOD;
+	char updatedStatus = FOOD;
+	for (int i=0; i<8; i++)
+	{
+		if ( actionApplier(&x, &y, i, wantedCharacter, leftOverCharacter, updatedStatus, false) )
+			return true;
+	}
+	return false;
+}
 
 void statusANT(char* status, int* x, int* y)
 {
 	bool foundFood = false;
 	// ANT want FOOD, found ---> ANTwFOOD
-	foundFood = actionTaker(x,y, ANT, FOOD, ANT );
-	//~ if (foundFood)
-		//~ *status = ANT;
+	// find FOOD
+	// change previous place with EMPTY
+	// replace FOODs place with ANT
+	foundFood = actionTaker(x,y, FOOD, EMPTY, ANTwFOOD );
+	if (foundFood)
+		*status = ANTwFOOD;
 	
-	// cannot find food, migrate to empty cell if possible
-	//~ else
-	//~ {
-		//~ actionTaker(x,y, ANT, EMPTY, ANT );
-	//~ }
-	//~ if (!foundFood)
-	randomActionTaker(x,y,ANT, EMPTY, ANT);
+	if (!foundFood)
+		randomActionTaker(x,y, EMPTY, EMPTY, ANT);
+}
+
+
+
+void statusANTwFOOD(char* status, int* x, int* y)
+{
+	bool foundFood = false;
+	//~ // ANT want FOOD, found ---> ANTwFOOD
+	//~ // find FOOD
+	//~ // change previous place with EMPTY
+	//~ // replace FOODs place with ANT
+	int xDummy = *x;
+	int yDummy = *y;
+	// only check for food around, do not move yourself
+	foundFood = doIHaveFoodNeighbor(xDummy, yDummy);
+	if (foundFood)
+	{
+		//~ printf("ANTwFOOD found food\n");
+		*status = TIRED;
+		// now move yourself
+		randomActionTaker(x,y, EMPTY, FOOD, ANT);
+	}
+	
+	if (!foundFood)
+	{
+		//~ printf("ANTwFOOD cant find food\n");
+		randomActionTaker(x,y, EMPTY, EMPTY, ANTwFOOD );
+	}
+}
+
+void statusTIRED(char* status, int* x, int* y)
+{
+	randomActionTaker(x,y, EMPTY, EMPTY, ANT );
+	*status = ANT;
+}
+
+int getRandomDelay()
+{
+	int baseDelay = getDelay();
+	int randomDelay = rand() % 10;
+	int total = baseDelay + randomDelay;
+	return total*1000;
 }
 
 void* antRoutine(void* void_ptr)
@@ -368,11 +404,20 @@ void* antRoutine(void* void_ptr)
 	
 	while (1)
 	{
-		usleep(20000);
+		//~ printf("%c\n", status);
 		if (status == ANT)
-		{
 			statusANT(&status, &x, &y);
+			
+		else if (status == ANTwFOOD)
+			statusANTwFOOD(&status, &x, &y);
+			
+		else if (status == TIRED)
+		{
+			statusTIRED(&status, &x, &y);
+			
 		}
+		
+		usleep(getRandomDelay());
 	}
 	
 	
@@ -384,21 +429,21 @@ int main(int argc, char *argv[]) {
     readFromCommandLine(argv);
     initializeSemaphores();
     initializeGridEmpty();
-    Coordinate* antCoordinates = initializeAnts(1);
-    initializeFoods(1);
+    Coordinate* antCoordinates = initializeAnts(numberOfAnts);
+    initializeFoods(numberOfFoods);
     
 
     pthread_t antThreads[numberOfAnts];
     //~ int antIDs[numberOfAnts];
     
-    for(int i=0; i<1; i++)
+    for(int i=0; i<numberOfAnts; i++)
     {
         pthread_create(&antThreads[i], NULL, antRoutine, &antCoordinates[i] );
         //~ printf("%d\n", i);
     }
     //////////////////////////////
 
-	bool debug = false;
+	bool debug = 0;
 	if (!debug)
 	{
 		startCurses();
