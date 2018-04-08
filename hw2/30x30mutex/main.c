@@ -48,11 +48,48 @@ void initializeFoods(int foodCount)
 	for (int i = 0; i < foodCount; i++)
 	{
 		do {
-            a = GRIDSIZE-1;
-            b = GRIDSIZE-1;
+            a = 0;
+            b = 0;
         }while (lookCharAt(a,b) != '-');
 		putCharTo(a, b, FOOD);
 	}
+	
+	//~ putCharTo(0, 0, FOOD);
+	//~ putCharTo(0, 1, FOOD);
+	//~ putCharTo(0, 2, FOOD);
+	
+	//~ putCharTo(1, 0, FOOD);
+	//~ putCharTo(1, 2, FOOD);
+	//~ putCharTo(1, 2, FOOD);
+	
+	//~ putCharTo(2, 0, FOOD);
+	//~ putCharTo(2, 1, FOOD);
+	//~ putCharTo(2, 2, FOOD);
+	//~ putCharTo(3, 3, FOOD);
+	//~ putCharTo(4, 4, FOOD);
+	
+	//~ putCharTo(0, 0, FOOD);
+	//~ putCharTo(0, 1, FOOD);
+	//~ putCharTo(0, 2, FOOD);
+	//~ putCharTo(0, 3, FOOD);
+	//~ putCharTo(0, 4, FOOD);
+	//~ putCharTo(0, 5, FOOD);
+	//~ putCharTo(0, 6, FOOD);
+	
+	//~ putCharTo(1, 7, FOOD);
+	//~ putCharTo(2, 8, FOOD);
+	//~ putCharTo(3, 9, FOOD);
+	
+	//~ putCharTo(4, 9, FOOD);
+	//~ putCharTo(5, 9, FOOD);
+	//~ putCharTo(6, 9, FOOD);
+	
+	//~ putCharTo(7, 8, FOOD);
+	//~ putCharTo(8, 7, FOOD);
+	//~ putCharTo(9, 6, FOOD);
+	
+	putCharTo(9, 5, FOOD);
+	//~ putCharTo(9, 4, FOOD);
 }
 
 Coordinate coordinateCreator(int x, int y)
@@ -71,12 +108,11 @@ Coordinate* initializeAnts(int antCount)
 	for (int i = 0; i < antCount; i++)
 	{
 		do {
-            a = 0;
-            b = 0;
+            a = 1;
+            b = 1;
         }while (lookCharAt(a,b) != '-');
 		
 		putCharTo(a, b, ANT);
-		//~ printf("a: %d %d\n", a,b);
 		Coordinate current = coordinateCreator(a,b);
 		coordinates[i] = current;
 	}
@@ -104,7 +140,7 @@ bool canMoveTo(const int* x, const int* y)
 		return false;
 }
 
-char* neighborBringer(const int* x, const int* y)
+char* neighborBringer(const int* y, const int* x)
 {
 	int xVal = *y;
 	int yVal = *x;
@@ -164,86 +200,161 @@ char* neighborBringer(const int* x, const int* y)
 	return neighbors;
 }
 
+
 void coordinateUpdaterByDestination(int destination, int* x, int* y)
 {
 	// upper coordinates
 	if (destination == 0)
 	{
-		*x = (*x) -1;
-		*y = (*y) -1;
+		*x = (*x) +1;
+		*y = (*y) +1;
 	}
 	else if (destination == 1)
 	{
-		*y = (*y) -1;
+		*y = (*y) +1;
 	}
 	else if (destination == 2)
 	{
-		*x = (*x) +1;
-		*y = (*y) -1;
+		*x = (*x) -1;
+		*y = (*y) +1;
 	}
 	
 	// middle coordinates
 	else if (destination == 3)
 	{
-		*x = (*x) -1;
+		*x = (*x) +1;
 	}
 	else if (destination == 4)
 	{
-		*x = (*x) +1;
+		*x = (*x) -1;
 	}
 	
 	// below coordinates
 	else if (destination == 5)
 	{
-		*x = (*x) -1;
-		*y = (*y) +1;
+		*x = (*x) +1;
+		*y = (*y) -1;
 	}
 	else if (destination == 6)
 	{
-		*y = (*y) +1;
+		*y = (*y) -1;
 	}
 	else if (destination == 7)
 	{
-		*x = (*x) +1;
-		*y = (*y) +1;
+		*x = (*x) -1;
+		*y = (*y) -1;
 	}
+}
+
+
+bool actionApplier(int* x, int* y, int code, char wantedCharacter, char updatedStatus)
+{	
+	int destX = *x;
+	int destY = *y;
+	int reverseDirection = 7-code;
+	coordinateUpdaterByDestination(reverseDirection, &destY, &destX);
+	
+	// early termination, exit if cannot move there
+	if ( !canMoveTo(&destY, &destX) )
+		return false;
+		
+	sem_wait(&cellGuards[destY][destX]);
+	
+	bool flag = false;
+	if ( canMoveTo(&destY, &destX) )
+	{
+		//~ printf("A%d ", code);
+		char obj = lookCharAt(destY, destX);
+		if ( obj == wantedCharacter )
+		{
+			//~ printf("current: %d %d\n", *x, *y);
+			putCharTo(*y,*x,EMPTY);
+			*x = destX;
+			*y = destY;
+			//~ printf("updated: %d %d\n", *x, *y);
+			putCharTo(*y,*x, updatedStatus);
+			flag = true;
+		}
+	}
+	sem_post(&cellGuards[destY][destX]);
+	
+	return flag;
+}
+
+bool randomActionTaker(int* x, int* y, char currentStatus, char wantedStatus, char updatedStatus)
+{
+	int index = 0;
+	int list[] = {-1,-1,-1,-1,-1,-1,-1,-1};
+	while(index < 8)
+	{
+		int a = rand() % 8;
+		bool flag = true;
+		for (int j=0; j<8; j++)
+		{
+			if (list[j] == a)
+				flag = false;
+		}
+		if (flag == true)
+		{
+			list[index] = a;
+			index ++;
+		}
+	}
+	for (int i=0; i<8 ; i++)
+	{
+		int direction = list[i];
+		if ( actionApplier(x,y,direction, wantedStatus, updatedStatus) )
+			return true;
+	}
+	return false;
+}
+
+bool actionTaker(int* x, int* y, char currentStatus, char leftOverStatus, char updatedStatus)
+{	
+	// upperNeighbors
+	if ( actionApplier(x, y, 0, leftOverStatus, updatedStatus) )
+		return true;
+		
+	if ( actionApplier(x, y, 1, leftOverStatus, updatedStatus) )
+		return true;
+		
+	if ( actionApplier(x, y, 2, leftOverStatus, updatedStatus) )
+		return true;
+		
+	if ( actionApplier(x, y, 3, leftOverStatus, updatedStatus) )
+		return true;
+		
+	if ( actionApplier(x, y, 4, leftOverStatus, updatedStatus) )
+		return true;
+		
+	if ( actionApplier(x, y, 5, leftOverStatus, updatedStatus) )
+		return true;
+		
+	if ( actionApplier(x, y, 6, leftOverStatus, updatedStatus) )
+		return true;
+		
+	if ( actionApplier(x, y, 7, leftOverStatus, updatedStatus) )
+		return true;
+
+	return false;
 }
 	
 
 void statusANT(char* status, int* x, int* y)
 {
-	char* neighbors = neighborBringer(x, y);
 	bool foundFood = false;
-	for (int i=0; i < 8; i++)
-	{
-		if (neighbors[i] == FOOD)
-		{
-			//~ putCharTo(*x,*y, EMPTY);
-			coordinateUpdaterByDestination(i,y,x);
-			putCharTo(*x,*y, ANTwFOOD);
-			*status = ANTwFOOD;
-			foundFood = true;
-			break;
-		}
-	}
+	// ANT want FOOD, found ---> ANTwFOOD
+	foundFood = actionTaker(x,y, ANT, FOOD, ANT );
+	//~ if (foundFood)
+		//~ *status = ANT;
 	
 	// cannot find food, migrate to empty cell if possible
-	if (!foundFood)
-	{
-		for (int i=0; i < 8; i++)
-		{
-			if (neighbors[i] == EMPTY)
-			{
-				putCharTo(*x,*y, ANT);
-				coordinateUpdaterByDestination(i,y,x);
-				putCharTo(*x,*y, ANT);
-				//~ *status = ANTwSLEEP;
-				break;
-			}
-		}
-	}
-	
-	free(neighbors);
+	//~ else
+	//~ {
+		//~ actionTaker(x,y, ANT, EMPTY, ANT );
+	//~ }
+	//~ if (!foundFood)
+	randomActionTaker(x,y,ANT, EMPTY, ANT);
 }
 
 void* antRoutine(void* void_ptr)
@@ -257,10 +368,11 @@ void* antRoutine(void* void_ptr)
 	
 	while (1)
 	{
-		//~ printf("%d %d\n", x, y);
 		usleep(20000);
 		if (status == ANT)
+		{
 			statusANT(&status, &x, &y);
+		}
 	}
 	
 	
@@ -270,15 +382,6 @@ int main(int argc, char *argv[]) {
     srand(time(NULL));
     
     readFromCommandLine(argv);
-
-    ////////////////////////////////
-    // Fills the grid randomly to have somthing to draw on screen.
-    // Empty spaces have to be -.
-    // You should get the number of ants and foods from the arguments 
-    // and make sure that a food and an ant does not placed at the same cell.
-    // You must use putCharTo() and lookCharAt() to access/change the grid.
-    // You should be delegating ants to separate threads
-    
     initializeSemaphores();
     initializeGridEmpty();
     Coordinate* antCoordinates = initializeAnts(1);
@@ -295,40 +398,42 @@ int main(int argc, char *argv[]) {
     }
     //////////////////////////////
 
-    // you have to have following command to initialize ncurses.
-    startCurses();
-    
-    // You can use following loop in your program. But pay attention to 
-    // the function calls, they do not have any access control, you 
-    // have to ensure that.
-    char c;
-    while (TRUE) {
-        drawWindow();
-        
-        c = 0;
-        c = getch();
+	bool debug = false;
+	if (!debug)
+	{
+		startCurses();
+		char c;
+		while (TRUE) {
+			drawWindow();
+			
+			c = 0;
+			c = getch();
 
-        if (c == 'q' || c == ESC) break;
-        if (c == '+') {
-            setDelay(getDelay()+10);
-        }
-        if (c == '-') {
-            setDelay(getDelay()-10);
-        }
-        if (c == '*') {
-            setSleeperN(getSleeperN()+1);
-        }
-        if (c == '/') {
-            setSleeperN(getSleeperN()-1);
-        }
-        usleep(50000);
-        
-        // each ant thread have to sleep with code similar to this
-        //usleep(getDelay() * 1000 + (rand() % 5000));
+			if (c == 'q' || c == ESC) break;
+			if (c == '+') {
+				setDelay(getDelay()+10);
+			}
+			if (c == '-') {
+				setDelay(getDelay()-10);
+			}
+			if (c == '*') {
+				setSleeperN(getSleeperN()+1);
+			}
+			if (c == '/') {
+				setSleeperN(getSleeperN()-1);
+			}
+			usleep(50000);
+			
+			// each ant thread have to sleep with code similar to this
+			//usleep(getDelay() * 1000 + (rand() % 5000));
+			
+		}
+		endCurses();
     }
+
     
-    // do not forget freeing the resources you get
-    endCurses();
+    while (debug) {
+	}
     
     return 0;
 }
