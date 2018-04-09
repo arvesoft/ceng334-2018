@@ -97,8 +97,8 @@ void* AntRoutine(void* args) {
         pthread_mutex_unlock(&grid_lock);
       }
       for (size_t i = 0, r = rand() % 8; i < 8 && !has_moved; i++) {
-        const int newx = ant.cur_x + dx[i + r];
-        const int newy = ant.cur_y + dy[i + r];
+        const int newx = ant.cur_x + dx[(i + r) % 8];
+        const int newy = ant.cur_y + dy[(i + r) % 8];
         if (!IsValid(newx, newy)) continue;
         pthread_mutex_lock(&grid_lock);
         const size_t cell = lookCharAt(newx, newy);
