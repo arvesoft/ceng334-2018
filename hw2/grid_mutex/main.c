@@ -248,6 +248,12 @@ int main(int argc, char* argv[]) {
   // do not forget freeing the resources you get
   endCurses();
 
+  is_running = 0;
+  for (size_t i = 0; i < number_of_ants; i++) {
+    while (pthread_join(ants[i].thread_id, NULL))
+      ;
+  }
+
   free(ants);
 
   return 0;
