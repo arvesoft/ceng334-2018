@@ -11,6 +11,8 @@
 #define TIRED 'U'
 typedef sem_t Semaphore;
 
+
+
 struct Coordinate
 {
 	int x;
@@ -22,6 +24,12 @@ int numberOfAnts;
 int numberOfFoods;
 int maxTimeInSeconds;
 Semaphore cellGuards[GRIDSIZE][GRIDSIZE];
+pthread_t* antThreads;
+int* antIDs;
+Coordinate* antCoordinates;
+
+pthread_mutex_t sleeping_mutex;
+pthread_cond_t sleeping_condition;
 
 void readFromCommandLine(char* argv[])
 {
@@ -89,7 +97,7 @@ void initializeFoods(int foodCount)
 	//~ putCharTo(8, 7, FOOD);
 	//~ putCharTo(9, 6, FOOD);
 	
-	putCharTo(9, 5, FOOD);
+	//~ putCharTo(9, 5, FOOD);
 	//~ putCharTo(9, 4, FOOD);
 }
 
@@ -113,15 +121,17 @@ Coordinate* initializeAnts(int antCount)
             b = rand() % (GRIDSIZE-1);
         }while (lookCharAt(a,b) != '-');
 		
-		putCharTo(a, b, ANT);
+		//~ putCharTo(a, b, ANT);
 		Coordinate current = coordinateCreator(a,b);
 		coordinates[i] = current;
 	}
 	return coordinates;
 }
 
-void initializeSemaphores()
+void initializeSemaphores(int numberOfAnts)
 {
+	pthread_mutex_init(&sleeping_mutex, NULL);
+	pthread_cond_init(&sleeping_condition, NULL);
 	for (int i=0; i < GRIDSIZE; i++)
 	{
 		for (int j=0; j < GRIDSIZE; j++)
@@ -317,7 +327,7 @@ bool actionTaker(int* x, int* y, char wantedCharacter, char leftOverCharacter, c
 {	
 	for (int i=0; i<8; i++)
 	{
-		if ( actionApplier(x, y, 0, wantedCharacter, leftOverCharacter, updatedStatus, true) )
+		if ( actionApplier(x, y, i, wantedCharacter, leftOverCharacter, updatedStatus, true) )
 			return true;
 	}
 	return false;
@@ -356,25 +366,19 @@ void statusANT(char* status, int* x, int* y)
 void statusANTwFOOD(char* status, int* x, int* y)
 {
 	bool foundFood = false;
-	//~ // ANT want FOOD, found ---> ANTwFOOD
-	//~ // find FOOD
-	//~ // change previous place with EMPTY
-	//~ // replace FOODs place with ANT
 	int xDummy = *x;
 	int yDummy = *y;
 	// only check for food around, do not move yourself
 	foundFood = doIHaveFoodNeighbor(xDummy, yDummy);
 	if (foundFood)
 	{
-		//~ printf("ANTwFOOD found food\n");
-		*status = TIRED;
 		// now move yourself
 		randomActionTaker(x,y, EMPTY, FOOD, ANT);
+		*status = TIRED;
 	}
 	
 	if (!foundFood)
 	{
-		//~ printf("ANTwFOOD cant find food\n");
 		randomActionTaker(x,y, EMPTY, EMPTY, ANTwFOOD );
 	}
 }
@@ -396,15 +400,40 @@ int getRandomDelay()
 void* antRoutine(void* void_ptr)
 {
 	// starting status
-	Coordinate* coordinatePointer = (Coordinate*) void_ptr;
-	Coordinate coord = *coordinatePointer;
+	int myID = *(int*) void_ptr;
+	Coordinate coord = antCoordinates[myID];
 	int x = coord.x ;
 	int y = coord.y;
+	putCharTo(y,x, ANT);
 	char status = ANT;
+	bool sleepFlag;
 	
 	while (1)
-	{
-		//~ printf("%c\n", status);
+	{	
+		sleepFlag = true;
+		while ( sleepFlag )
+		{
+			pthread_mutex_lock(&sleeping_mutex);
+			int currentSleeping = getSleeperN();
+			pthread_mutex_unlock(&sleeping_mutex);
+			
+			if (myID < currentSleeping)
+			{
+				pthread_mutex_lock(&sleeping_mutex);
+				if (status == ANT)
+					putCharTo(y,x, ANTwSLEEP);
+				else
+					putCharTo(y,x, ANTwFOODwSLEEP);
+				pthread_cond_wait(&sleeping_condition, &sleeping_mutex);
+				pthread_mutex_unlock(&sleeping_mutex);
+			}
+			else
+			{
+				putCharTo(y,x, status);
+				sleepFlag = false;
+			}
+		}
+			
 		if (status == ANT)
 			statusANT(&status, &x, &y);
 			
@@ -414,10 +443,11 @@ void* antRoutine(void* void_ptr)
 		else if (status == TIRED)
 		{
 			statusTIRED(&status, &x, &y);
-			
 		}
 		
-		usleep(getRandomDelay());
+		usleep(getDelay() * 1000 + (rand() % 5000));
+		
+		
 	}
 	
 	
@@ -427,21 +457,21 @@ int main(int argc, char *argv[]) {
     srand(time(NULL));
     
     readFromCommandLine(argv);
-    initializeSemaphores();
+    initializeSemaphores(numberOfAnts);
     initializeGridEmpty();
-    Coordinate* antCoordinates = initializeAnts(numberOfAnts);
     initializeFoods(numberOfFoods);
+	antCoordinates = initializeAnts(numberOfAnts);
+    
     
 
-    pthread_t antThreads[numberOfAnts];
-    //~ int antIDs[numberOfAnts];
+    antThreads = malloc(sizeof(pthread_t)*numberOfAnts);
+	antIDs = malloc(sizeof(int)*numberOfAnts);
     
     for(int i=0; i<numberOfAnts; i++)
     {
-        pthread_create(&antThreads[i], NULL, antRoutine, &antCoordinates[i] );
-        //~ printf("%d\n", i);
+		antIDs[i] = i;
+        pthread_create(&antThreads[i], NULL, antRoutine, &antIDs[i] );
     }
-    //////////////////////////////
 
 	bool debug = 0;
 	if (!debug)
@@ -462,23 +492,32 @@ int main(int argc, char *argv[]) {
 				setDelay(getDelay()-10);
 			}
 			if (c == '*') {
+				pthread_mutex_lock(&sleeping_mutex);
 				setSleeperN(getSleeperN()+1);
+				pthread_mutex_unlock(&sleeping_mutex);
 			}
 			if (c == '/') {
+				pthread_mutex_lock(&sleeping_mutex);
 				setSleeperN(getSleeperN()-1);
+				pthread_mutex_unlock(&sleeping_mutex);
+				pthread_cond_broadcast(&sleeping_condition);
 			}
-			usleep(50000);
 			
-			// each ant thread have to sleep with code similar to this
-			//usleep(getDelay() * 1000 + (rand() % 5000));
+			pthread_mutex_lock(&sleeping_mutex);
+			int currentSleeping = getSleeperN();
+			pthread_mutex_unlock(&sleeping_mutex);
 			
+			
+			usleep(50000);			
 		}
 		endCurses();
     }
+    
 
     
     while (debug) {
 	}
-    
+	
+    free(antCoordinates);
     return 0;
 }
