@@ -51,7 +51,7 @@ void activateInode(struct ext2_inode& inode, unsigned int inode_no) {
 
 void markBlocksAsUsed(const std::vector<unsigned int>& blocks) {
   for (const unsigned int block : blocks) {
-    BM_SET(block, block_bitmap);
+    BM_SET(block - 1, block_bitmap);
   }
   group.bg_free_blocks_count -= blocks.size();
   super.s_free_blocks_count -= blocks.size();
@@ -210,15 +210,14 @@ std::vector<int> printTripleIndirectBlocks(int blockNo, int index,
   }
 }
 
-std::vector<unsigned int> isReachable(std::vector<unsigned int> blocksArray,
-                                      bmap* blockBitmap) {
+std::vector<unsigned int> isReachable(std::vector<unsigned int> blocksArray) {
   int count = blocksArray.size();
 
   int reachableCount = 0;
   for (int i = 0; i < count; i++) {
     int blockIndex = blocksArray[i];
     // note the -1 part
-    if (BM_ISSET(blockIndex - 1, blockBitmap)) {
+    if (BM_ISSET(blockIndex - 1, block_bitmap)) {
       printf("REACHED: %d\n", blockIndex);
       reachableCount++;
     } else {
