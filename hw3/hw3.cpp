@@ -335,7 +335,7 @@ int main(void) {
     struct ext2_inode inode = getInodeInfo(dir_entry.inode);
     struct ext2_inode parent_inode = getInodeInfo(front.parent_inode_number);
     std::vector<unsigned int> blocks = GetBlocks(inode);
-    activateInode(inode);
+    activateInode(inode, dir_entry.inode);
     putInodeInto(inode, lost_found_inode);
     deleteInodeFrom(inode, parent_inode);
     markBlocksAsUsed(blocks);
