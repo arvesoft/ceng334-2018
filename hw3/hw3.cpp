@@ -37,6 +37,12 @@ struct ext2_group_desc group;
 bmap* block_bitmap;
 bmap* inode_bitmap;
 
+void activateInode(struct ext2_inode& inode, unsigned int inode_no) {
+  inode.i_dtime = 0;
+  inode.i_mode = EXT2_FT_REG_FILE;
+  BM_SET(inode_no, inode_bitmap);
+}
+
 void bitmap_block_reader(bmap* block_bitmap, struct ext2_super_block super) {
   for (int i = 1; i < super.s_blocks_count; i++) {
     int j = i;
