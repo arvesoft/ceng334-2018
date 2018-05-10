@@ -210,7 +210,7 @@ std::vector<int> printTripleIndirectBlocks(int blockNo, int index,
   }
 }
 
-std::vector<unsigned int> isReachable(std::vector<unsigned int> blocksArray) {
+bool isReachable(const std::vector<unsigned int>& blocksArray) {
   int count = blocksArray.size();
 
   int reachableCount = 0;
@@ -226,11 +226,10 @@ std::vector<unsigned int> isReachable(std::vector<unsigned int> blocksArray) {
   }
   if (reachableCount == count) {
     printf("[STATUS]: ALL Reachable\n");
-    return blocksArray;
-  } else {
-    printf("[STATUS]: NOT REACHABLE\n");
-    return {};
+    return true;
   }
+  printf("[STATUS]: NOT REACHABLE\n");
+  return false;
 }
 
 std::vector<int> mergeAll(std::vector<int> List[]) {
