@@ -3,11 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <cstring>
 #include <iostream>
 #include <queue>
 #include <vector>
 #include "ext2.h"
-#include <cstring>
 
 // my addition to see if it is file or folder
 #include <sys/stat.h>
@@ -77,7 +77,8 @@ void bitmap_block_reader(bmap* block_bitmap, struct ext2_super_block super) {
   return;
 }
 
-std::vector<unsigned int> printDirectBlocks(struct ext2_inode inode, int index) {
+std::vector<unsigned int> printDirectBlocks(struct ext2_inode inode,
+                                            int index) {
   std::vector<unsigned int> directBlocks;
 
   int count = 0;
@@ -100,8 +101,9 @@ std::vector<unsigned int> printDirectBlocks(struct ext2_inode inode, int index) 
   return directBlocks;
 }
 
-std::vector<unsigned int> readBlockIntoArray(int blockNo, struct ext2_super_block super,
-                                    int fd) {
+std::vector<unsigned int> readBlockIntoArray(int blockNo,
+                                             struct ext2_super_block super,
+                                             int fd) {
   int num_of_ptrs = block_size / 4;
   if (blockNo) {
     lseek(fd,
@@ -135,9 +137,8 @@ std::vector<unsigned int> readBlockIntoArray(int blockNo, struct ext2_super_bloc
   }
 }
 
-std::vector<unsigned int> printSingleIndirectBlocks(int blockNo, int index,
-                                           struct ext2_super_block super,
-                                           int fd) {
+std::vector<unsigned int> printSingleIndirectBlocks(
+    int blockNo, int index, struct ext2_super_block super, int fd) {
   int num_of_ptrs = block_size / 4;
 
   // inode block 12 holds which inode holds directs
@@ -164,12 +165,12 @@ std::vector<unsigned int> printSingleIndirectBlocks(int blockNo, int index,
 }
 
 // IN PROGRESS, return in if block missing
-std::vector<unsigned int> printDoubleIndirectBlocks(int blockNo, int index,
-                                           struct ext2_super_block super,
-                                           int fd) {
+std::vector<unsigned int> printDoubleIndirectBlocks(
+    int blockNo, int index, struct ext2_super_block super, int fd) {
   std::vector<unsigned int> allReachedFromDouble;
   if (blockNo) {
-    std::vector<unsigned int> doubleBlock = readBlockIntoArray(blockNo, super, fd);
+    std::vector<unsigned int> doubleBlock =
+        readBlockIntoArray(blockNo, super, fd);
     int countOfDoubles = doubleBlock.size();
 
     for (int i = 0; i < countOfDoubles; i++) {
@@ -191,12 +192,12 @@ std::vector<unsigned int> printDoubleIndirectBlocks(int blockNo, int index,
 }
 
 // IN PROGRESS, return in if block missing
-std::vector<unsigned int> printTripleIndirectBlocks(int blockNo, int index,
-                                           struct ext2_super_block super,
-                                           int fd) {
+std::vector<unsigned int> printTripleIndirectBlocks(
+    int blockNo, int index, struct ext2_super_block super, int fd) {
   std::vector<unsigned int> allReachedFromTriple;
   if (blockNo) {
-    std::vector<unsigned int> tripleBlock = readBlockIntoArray(blockNo, super, fd);
+    std::vector<unsigned int> tripleBlock =
+        readBlockIntoArray(blockNo, super, fd);
     int countOfTriples = tripleBlock.size();
 
     for (int i = 0; i < countOfTriples; i++) {
@@ -266,7 +267,8 @@ std::vector<unsigned int> GetBlocks(struct ext2_inode inode) {
   std::vector<unsigned int> tripleIndirectBlocks =
       printTripleIndirectBlocks(inode.i_block[14], 0, super, fd);
   std::vector<unsigned int> List[] = {directBlocks, singleIndirectBlocks,
-                             doubleIndirectBlocks, tripleIndirectBlocks};
+                                      doubleIndirectBlocks,
+                                      tripleIndirectBlocks};
 
   std::vector<unsigned int> allBlocks = mergeAll(List);
 
@@ -275,17 +277,18 @@ std::vector<unsigned int> GetBlocks(struct ext2_inode inode) {
   printf("\n");
 }
 
-struct ext2_inode getInodeInfo(unsigned int inodeNo)
-{
+struct ext2_inode getInodeInfo(unsigned int inodeNo) {
   struct ext2_inode inode;
-  lseek(fd, BLOCK_OFFSET(group.bg_inode_table)+(inodeNo-1)*sizeof(struct ext2_inode), SEEK_SET);
+  lseek(fd,
+        BLOCK_OFFSET(group.bg_inode_table) +
+            (inodeNo - 1) * sizeof(struct ext2_inode),
+        SEEK_SET);
   read(fd, &inode, sizeof(struct ext2_inode));
   printf("AAA: %d %d %d\n", inode.i_size, inode.i_mode, inode.i_blocks);
   return inode;
 }
 
-std::vector<struct ext2_dir_entry> getChildren(struct ext2_inode inode)
-{
+std::vector<struct ext2_dir_entry> getChildren(struct ext2_inode inode) {
   printf("BBB: %d %d %d\n", inode.i_size, inode.i_mode, inode.i_blocks);
   unsigned char block[block_size];
   lseek(fd, BLOCK_OFFSET(inode.i_block[0]), SEEK_SET);
@@ -294,22 +297,20 @@ std::vector<struct ext2_dir_entry> getChildren(struct ext2_inode inode)
   std::vector<struct ext2_dir_entry> directoryEntries;
 
   unsigned int size = 0;
-  struct ext2_dir_entry *entry = (struct ext2_dir_entry *) block;
-  while(size < inode.i_size && entry->inode)
-  {
-        
-        char file_name[EXT2_NAME_LEN+1];
-        std::memcpy(file_name, entry->name, entry->name_len);
-        file_name[entry->name_len] = 0;              /* append null char to the file name */
-        printf("aaa: %10u %s\n", entry->inode, file_name);
+  struct ext2_dir_entry* entry = (struct ext2_dir_entry*)block;
+  while (size < inode.i_size && entry->inode) {
+    char file_name[EXT2_NAME_LEN + 1];
+    std::memcpy(file_name, entry->name, entry->name_len);
+    file_name[entry->name_len] = 0; /* append null char to the file name */
+    printf("aaa: %10u %s\n", entry->inode, file_name);
 
-        ext2_dir_entry dirEntry = *entry;
-        directoryEntries.push_back(dirEntry);
+    ext2_dir_entry dirEntry = *entry;
+    directoryEntries.push_back(dirEntry);
 
-        size += entry->rec_len;
-        entry = (ext2_dir_entry*) entry + entry->rec_len;      /* move to the next entry */
-        
-}
+    entry = (ext2_dir_entry*)((void*)entry +
+                              entry->rec_len); /* move to the next entry */
+    size += entry->rec_len;
+  }
 
   return directoryEntries;
 }
