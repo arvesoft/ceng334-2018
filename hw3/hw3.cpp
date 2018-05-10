@@ -43,6 +43,12 @@ void activateInode(struct ext2_inode& inode, unsigned int inode_no) {
   BM_SET(inode_no, inode_bitmap);
 }
 
+void markBlocksAsUsed(const std::vector<unsigned int>& blocks) {
+  for (const unsigned int block : blocks) {
+    BM_SET(block, block_bitmap);
+  }
+}
+
 void bitmap_block_reader(bmap* block_bitmap, struct ext2_super_block super) {
   for (int i = 1; i < super.s_blocks_count; i++) {
     int j = i;
