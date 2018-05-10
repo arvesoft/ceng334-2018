@@ -1,6 +1,6 @@
 all:
-	gcc main.c -lpthread -lncurses -o hw2
+	gcc main.c -g -lpthread -lncurses -o hw2
 	
 run:
-	gcc main.c -lpthread -lncurses -o hw2
-	./hw2 5 10 15
+	gcc main.c -g -lpthread -lncurses -o hw2
+	./hw2 350 10 15

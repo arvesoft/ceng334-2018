@@ -27,6 +27,8 @@ Semaphore cellGuards[GRIDSIZE][GRIDSIZE];
 pthread_t* antThreads;
 int* antIDs;
 Coordinate* antCoordinates;
+size_t termination_time;
+bool isRunning = true;
 
 pthread_mutex_t sleeping_mutex;
 pthread_cond_t sleeping_condition;
@@ -407,8 +409,7 @@ void* antRoutine(void* void_ptr)
 	putCharTo(y,x, ANT);
 	char status = ANT;
 	bool sleepFlag;
-	
-	while (1)
+	while (isRunning)
 	{	
 		sleepFlag = true;
 		while ( sleepFlag )
@@ -446,8 +447,6 @@ void* antRoutine(void* void_ptr)
 		}
 		
 		usleep(getDelay() * 1000 + (rand() % 5000));
-		
-		
 	}
 	
 	
@@ -473,12 +472,22 @@ int main(int argc, char *argv[]) {
         pthread_create(&antThreads[i], NULL, antRoutine, &antIDs[i] );
     }
 
+	struct timespec time_start;
+	clock_gettime(CLOCK_MONOTONIC, &time_start);
+
 	bool debug = 0;
 	if (!debug)
 	{
 		startCurses();
 		char c;
 		while (TRUE) {
+			
+			struct timespec time_now;
+			clock_gettime(CLOCK_MONOTONIC, &time_now);
+			double elapsed = (time_now.tv_sec - time_start.tv_sec) +
+				(time_now.tv_nsec - time_start.tv_nsec) / 1.0e9;
+			if (elapsed > maxTimeInSeconds)
+				break;
 			drawWindow();
 			
 			c = 0;
@@ -507,17 +516,21 @@ int main(int argc, char *argv[]) {
 			int currentSleeping = getSleeperN();
 			pthread_mutex_unlock(&sleeping_mutex);
 			
-			
 			usleep(50000);			
 		}
 		endCurses();
     }
     
-
-    
-    while (debug) {
-	}
+    isRunning = false;
+    usleep(50000);
+	
+	for (size_t i = 0; i < numberOfAnts; i++) {
+		while (pthread_join(antThreads[i], NULL))
+			;
+	}	
 	
     free(antCoordinates);
+    free(antThreads);
+    free(antIDs);
     return 0;
 }

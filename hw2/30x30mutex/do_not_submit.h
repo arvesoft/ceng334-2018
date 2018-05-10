@@ -92,7 +92,8 @@ void startCurses() {
 void endCurses() {
     erase();
     refresh();
-    if (gridworld != NULL) delwin(gridworld);
+    if (gridworld != NULL)
+		delwin(gridworld);
     gridworld = NULL;
     
     endwin();
