@@ -4,13 +4,14 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include "ext2.h"
+#include <vector>
 
 // my addition to see if it is file or folder
 #include <sys/stat.h>
 
 #define BASE_OFFSET 1024
 #define EXT2_BLOCK_SIZE 1024
-#define IMAGE "image_3files_1deleted.img"
+#define IMAGE "image_indirect.img"
 
 typedef unsigned char bmap;
 #define __NBITS (8 * (int)sizeof(bmap))
@@ -24,18 +25,6 @@ unsigned int block_size = 0;
 #define BLOCK_OFFSET(block) (BASE_OFFSET + (block - 1) * block_size)
 
 int fd;
-
-struct _Vector {
-  int* _list;
-  int _size;
-} typedef Vector;
-
-Vector createVector(int* list, int size) {
-  Vector result;
-  result._list = list;
-  result._size = size;
-  return result;
-}
 
 void bitmap_block_reader(bmap* block_bitmap, struct ext2_super_block super) {
   for (int i = 1; i < super.s_blocks_count; i++) {
@@ -55,33 +44,31 @@ void bitmap_block_reader(bmap* block_bitmap, struct ext2_super_block super) {
   return;
 }
 
-Vector printDirectBlocks(struct ext2_inode inode, int index) {
-  int* directBlocks = malloc(sizeof(int) * 12);
-  for (int i = 0; i < 12; i++) directBlocks[i] = -1;
+std::vector<int> printDirectBlocks(struct ext2_inode inode, int index) {
+  std::vector<int> directBlocks;
 
   int count = 0;
   for (int i = 0; i < 12; i++) {
     if (!(inode.i_block[i]))
       continue;
-    else if (i < 12)  // direct blocks
-      count++;
-    directBlocks[i] = inode.i_block[i];
+    else  // direct blocks
+    {
+        count++;
+        directBlocks.push_back( inode.i_block[i] );
+    }
   }
 
   printf("DIRECT:");
   printf("    #: %d", count);
   printf("    [");
-  for (int i = 0; i < 12; i++)
+  for (int i = 0; i < count; i++)
     if (directBlocks[i] != -1) printf("%d ", directBlocks[i]);
   printf("]\n");
-
-  Vector result = createVector(directBlocks, count);
-  return result;
+  return directBlocks;
 }
 
-Vector readBlockIntoArray(int blockNo, struct ext2_super_block super, int fd) {
+std::vector<int> readBlockIntoArray(int blockNo, struct ext2_super_block super, int fd) {
   int num_of_ptrs = block_size / 4;
-  Vector result;
   if (blockNo) {
     lseek(fd,
           BLOCK_OFFSET(super.s_first_data_block) + block_size * (blockNo - 1),
@@ -94,8 +81,8 @@ Vector readBlockIntoArray(int blockNo, struct ext2_super_block super, int fd) {
     }
 
     // allocate an array for indirect blocks
-    int* singleIndirectBlocks = malloc(sizeof(int) * count);
-    for (int i = 0; i < count; i++) singleIndirectBlocks[i] = -1;
+    std::vector<int> singleIndirectBlocks;
+    singleIndirectBlocks.resize(0);
 
     // move cursor back to its position, then read into array
     lseek(fd,
@@ -103,21 +90,19 @@ Vector readBlockIntoArray(int blockNo, struct ext2_super_block super, int fd) {
           SEEK_SET);
     for (int i = 0; i < num_of_ptrs; i++) {
       read(fd, &arr, 4);
-      if (arr != 0) singleIndirectBlocks[i] = arr;
+      if (arr == 0)
+        break;
+      singleIndirectBlocks.push_back(arr);
     }
 
-    Vector result;
-    result._list = singleIndirectBlocks;
-    result._size = count;
-    return result;
+    return singleIndirectBlocks;
   } else {
-    result._list = NULL;
-    result._size = 0;
-    return result;
+    // SCREAM HERE
+    return {};
   }
 }
 
-Vector printSingleIndirectBlocks(int blockNo, int index,
+std::vector<int> printSingleIndirectBlocks(int blockNo, int index,
                                  struct ext2_super_block super, int fd) {
   int num_of_ptrs = block_size / 4;
 
@@ -126,101 +111,101 @@ Vector printSingleIndirectBlocks(int blockNo, int index,
     printf("SINGLE:");
     printf("    SingleHolderBlock: %d", blockNo);
 
-    Vector singleIndirectBlocks = readBlockIntoArray(blockNo, super, fd);
-    int* array = singleIndirectBlocks._list;
-    int count = singleIndirectBlocks._size;
+    std::vector<int> singleIndirectBlocks = readBlockIntoArray(blockNo, super, fd);
+    singleIndirectBlocks.insert(singleIndirectBlocks.begin(), blockNo);
+    
+    int count = singleIndirectBlocks.size();
 
     // print to screen
     printf("    #: %d", count);
     printf("    [");
-    for (int i = 0; i < count; i++) printf("%d ", array[i]);
+    for (int i = 0; i < count; i++) printf("%d ", singleIndirectBlocks[i]);
     printf("]\n");
 
     return singleIndirectBlocks;
   } else {
-    Vector emptyVector = createVector(NULL, 0);
-    return emptyVector;
+    return {};
   }
 }
 
 // IN PROGRESS, return in if block missing
-Vector printDoubleIndirectBlocks(int blockNo, int index,
+std::vector<int> printDoubleIndirectBlocks(int blockNo, int index,
                                  struct ext2_super_block super, int fd) {
+    std::vector<int> allReachedFromDouble;
   if (blockNo) {
-    Vector doubleBlock = readBlockIntoArray(blockNo, super, fd);
-    int* arrayOfDoubles = doubleBlock._list;
-    int countOfDoubles = doubleBlock._size;
+    std::vector<int> doubleBlock = readBlockIntoArray(blockNo, super, fd);
+    int countOfDoubles = doubleBlock.size();
 
     for (int i = 0; i < countOfDoubles; i++) {
-      int blockNoOfSingle = arrayOfDoubles[i];
-      printSingleIndirectBlocks(blockNoOfSingle, index, super, fd);
+      int blockNoOfSingle = doubleBlock[i];
+
+      std::vector<int> local = printSingleIndirectBlocks(blockNoOfSingle, index, super, fd);
+      // local.insert(local.begin(), blockNoOfSingle);
+      allReachedFromDouble.insert(allReachedFromDouble.end(), local.begin(), local.end());
     }
+
+    allReachedFromDouble.insert(allReachedFromDouble.begin(), blockNo);
+    return allReachedFromDouble;
+
   } else {
-    Vector emptyVector = createVector(NULL, 0);
-    return emptyVector;
+    return {};
   }
 }
 
 // IN PROGRESS, return in if block missing
-Vector printTripleIndirectBlocks(int blockNo, int index,
+std::vector<int> printTripleIndirectBlocks(int blockNo, int index,
                                  struct ext2_super_block super, int fd) {
+    std::vector<int> allReachedFromTriple;
   if (blockNo) {
-    Vector tripleBlock = readBlockIntoArray(blockNo, super, fd);
-    int* arrayOfTriples = tripleBlock._list;
-    int countOfTriples = tripleBlock._size;
+    std::vector<int> tripleBlock = readBlockIntoArray(blockNo, super, fd);
+    int countOfTriples = tripleBlock.size();
 
     for (int i = 0; i < countOfTriples; i++) {
-      int blockNoOfDouble = arrayOfTriples[i];
-      printDoubleIndirectBlocks(blockNoOfDouble, index, super, fd);
+      int blockNoOfDouble = tripleBlock[i];
+      std::vector<int> local = printDoubleIndirectBlocks(blockNoOfDouble, index, super, fd);
+      allReachedFromTriple.insert(allReachedFromTriple.end(), local.begin(), local.end());
     }
+    allReachedFromTriple.insert(allReachedFromTriple.begin(), blockNo);
   } else {
-    Vector emptyVector = createVector(NULL, 0);
-    return emptyVector;
+    return {};
   }
 }
 
-bool isDeleted(Vector blocksVector, bmap* blockBitmap) {
-  int* blocksArray = blocksVector._list;
-  int count = blocksVector._size;
+std::vector<int> isReachable(std::vector<int> blocksArray, bmap* blockBitmap) {
+  int count = blocksArray.size();
 
-  int reachable = 0;
+  int reachableCount = 0;
   for (int i = 0; i < count; i++) {
     int blockIndex = blocksArray[i];
     // note the -1 part
     if (BM_ISSET(blockIndex - 1, blockBitmap)) {
       printf("REACHED: %d\n", blockIndex);
-      reachable++;
+      reachableCount++;
     } else {
       printf("CANNOT: %d\n", blockIndex);
     }
   }
-
-  if (reachable == count) {
+  if (reachableCount == count) {
     printf("[STATUS]: ALL Reachable\n");
-    return true;
+    return blocksArray;
   } else {
     printf("[STATUS]: NOT REACHABLE\n");
-    return false;
+    return {};
   }
 }
 
-Vector mergeAll(Vector* vectorList, int length) {
-  int totalSize = 0;
-  for (int i = 0; i < length; i++) {
-    totalSize += vectorList[i]._size;
-  }
-
-  int cursor = 0;
-  int* allBlocks = malloc(sizeof(int) * totalSize);
-
-  for (int i = 0; i < length; i++) {
-    int* blocks = vectorList[i]._list;
-    int count = vectorList->_size;
-    // IN PROGRESS, will continue from here
-  }
+std::vector<int> mergeAll(std::vector<int> List[])
+{
+    std::vector<int> allBlocksYouCanThinkOf;
+    for(int i=0; i<4; i++)
+    {
+        std::vector<int> part = List[i];
+        allBlocksYouCanThinkOf.insert(allBlocksYouCanThinkOf.begin(), part.begin(), part.end());
+    }
+    return allBlocksYouCanThinkOf;
 }
 
-Vector inode_block_reader(struct ext2_inode inode, int index,
+std::vector<int> inode_block_reader(struct ext2_inode inode, int index,
                           struct ext2_super_block super, int fd) {
   printf("Inode No: %d\n", index);
   if (S_ISREG(inode.i_mode))
@@ -232,22 +217,23 @@ Vector inode_block_reader(struct ext2_inode inode, int index,
          inode.i_blocks / (block_size / 512));
   if (inode.i_size == 0) {
     printf("\n");
-    return createVector(NULL, 0);
+    return {};
   }
 
-  Vector directBlocks = printDirectBlocks(inode, index);
-  Vector singleIndirectBlocks =
+  std::vector<int> directBlocks = printDirectBlocks(inode, index);
+  std::vector<int> singleIndirectBlocks =
       printSingleIndirectBlocks(inode.i_block[12], index, super, fd);
-  Vector doubleIndirectBlocks =
+  std::vector<int> doubleIndirectBlocks =
       printDoubleIndirectBlocks(inode.i_block[13], index, super, fd);
-  Vector tripleIndirectBlocks =
+  std::vector<int> tripleIndirectBlocks =
       printTripleIndirectBlocks(inode.i_block[14], index, super, fd);
-  Vector vectorList[] = {directBlocks, singleIndirectBlocks,
+  std::vector<int> List[] = {directBlocks, singleIndirectBlocks,
                          doubleIndirectBlocks, tripleIndirectBlocks};
 
-  // Vector allBlocks =
+  
+  std::vector<int> allBlocks = mergeAll(List);
 
-  return singleIndirectBlocks;
+  return allBlocks;
 
   printf("\n");
 }
@@ -300,12 +286,12 @@ int main(void) {
 
   // read block bitmap
   bmap* block_bitmap;
-  block_bitmap = malloc(block_size);
+  block_bitmap = (bmap*) malloc( block_size );
   lseek(fd, BLOCK_OFFSET(group.bg_block_bitmap), SEEK_SET);
   read(fd, block_bitmap, block_size);
 
   bmap* inode_bitmap;
-  inode_bitmap = malloc(block_size);
+  inode_bitmap = (bmap*) malloc(block_size);
   lseek(fd, BLOCK_OFFSET(group.bg_inode_bitmap), SEEK_SET);
   read(fd, inode_bitmap, block_size);
 
@@ -333,32 +319,11 @@ int main(void) {
           SEEK_SET);
     read(fd, &inode, sizeof(struct ext2_inode));
     printf("Flags: %d\n", inode.i_dtime);
-    Vector ih = inode_block_reader(inode, i + 1, super, fd);
-    isDeleted(ih, block_bitmap);
+    std::vector<int> ih = inode_block_reader(inode, i + 1, super, fd);
+    isReachable(ih, block_bitmap);
   }
   printf("#####\n");
   bitmap_block_reader(block_bitmap, super);
-
-  // read root inode
-  // struct ext2_inode inode;
-  // lseek(fd, BLOCK_OFFSET(group.bg_inode_table)+sizeof(struct ext2_inode),
-  // SEEK_SET); read(fd, &inode, sizeof(struct ext2_inode)); printf("Reading
-  // root inode\n"
-  //        "Size     : %u bytes\n"
-  //        "Blocks   : %u\n",
-  //        inode.i_size,
-  //        inode.i_blocks); // in number of sectors. A disk sector is 512
-  //        bytes.
-  // for(int i=0; i < 15; i++){
-  //     if (i < 12)         // direct blocks
-  //         printf("Block %2u : %u\n", i, inode.i_block[i]);
-  //     else if (i == 12)     // single indirect block
-  //         printf("Single   : %u\n", inode.i_block[i]);
-  //     else if (i == 13)    // double indirect block
-  //         printf("Double   : %u\n", inode.i_block[i]);
-  //     else if (i == 14)    // triple indirect block
-  //         printf("Triple   : %u\n", inode.i_block[i]);
-  // }
 
   close(fd);
   return 0;
