@@ -37,6 +37,10 @@ struct ext2_group_desc group;
 bmap* block_bitmap;
 bmap* inode_bitmap;
 
+bool isDeleted(struct ext2_inode& inode) {
+  return inode.i_mode == 0 || inode.i_dtime;
+}
+
 void activateInode(struct ext2_inode& inode, unsigned int inode_no) {
   inode.i_dtime = 0;
   inode.i_mode = EXT2_FT_REG_FILE;
@@ -206,7 +210,8 @@ std::vector<int> printTripleIndirectBlocks(int blockNo, int index,
   }
 }
 
-std::vector<int> isReachable(std::vector<int> blocksArray, bmap* blockBitmap) {
+std::vector<unsigned int> isReachable(std::vector<unsigned int> blocksArray,
+                                      bmap* blockBitmap) {
   int count = blocksArray.size();
 
   int reachableCount = 0;
