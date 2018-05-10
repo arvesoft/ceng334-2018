@@ -41,12 +41,16 @@ void activateInode(struct ext2_inode& inode, unsigned int inode_no) {
   inode.i_dtime = 0;
   inode.i_mode = EXT2_FT_REG_FILE;
   BM_SET(inode_no, inode_bitmap);
+  group.bg_free_inodes_count--;
+  super.s_free_inodes_count--;
 }
 
 void markBlocksAsUsed(const std::vector<unsigned int>& blocks) {
   for (const unsigned int block : blocks) {
     BM_SET(block, block_bitmap);
   }
+  group.bg_free_blocks_count -= blocks.size();
+  super.s_free_blocks_count -= blocks.size();
 }
 
 void bitmap_block_reader(bmap* block_bitmap, struct ext2_super_block super) {
@@ -289,10 +293,6 @@ int main(void) {
   unsigned int group_count =
       1 + (super.s_blocks_count - 1) / super.s_blocks_per_group;
 
-  // read group descriptor
-  lseek(fd, BASE_OFFSET + block_size, SEEK_SET);
-  read(fd, &group, sizeof(group));
-
   // read block bitmap
   block_bitmap = new bmap[block_size];
   lseek(fd, BLOCK_OFFSET(group.bg_block_bitmap), SEEK_SET);
@@ -352,6 +352,12 @@ int main(void) {
 
   lseek(fd, BLOCK_OFFSET(group.bg_block_bitmap), SEEK_SET);
   write(fd, block_bitmap, block_size);
+
+  lseek(fd, BASE_OFFSET + block_size, SEEK_SET);
+  write(fd, &group, sizeof(group));
+
+  lseek(fd, BASE_OFFSET, SEEK_SET);
+  write(fd, &super, sizeof(super));
 
   close(fd);
   return 0;
