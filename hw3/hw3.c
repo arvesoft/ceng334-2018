@@ -3,8 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include "ext2.h"
+#include <iostream>
+#include <queue>
 #include <vector>
+#include "ext2.h"
 
 // my addition to see if it is file or folder
 #include <sys/stat.h>
@@ -24,7 +26,16 @@ typedef unsigned char bmap;
 unsigned int block_size = 0;
 #define BLOCK_OFFSET(block) (BASE_OFFSET + (block - 1) * block_size)
 
+struct dir_entry_with_parent {
+  unsigned int parent_inode_number;
+  struct ext2_dir_entry dir_entry;
+};
+
 int fd;
+struct ext2_super_block super;
+struct ext2_group_desc group;
+bmap* block_bitmap;
+bmap* inode_bitmap;
 
 void bitmap_block_reader(bmap* block_bitmap, struct ext2_super_block super) {
   for (int i = 1; i < super.s_blocks_count; i++) {
@@ -53,8 +64,8 @@ std::vector<int> printDirectBlocks(struct ext2_inode inode, int index) {
       continue;
     else  // direct blocks
     {
-        count++;
-        directBlocks.push_back( inode.i_block[i] );
+      count++;
+      directBlocks.push_back(inode.i_block[i]);
     }
   }
 
@@ -67,7 +78,8 @@ std::vector<int> printDirectBlocks(struct ext2_inode inode, int index) {
   return directBlocks;
 }
 
-std::vector<int> readBlockIntoArray(int blockNo, struct ext2_super_block super, int fd) {
+std::vector<int> readBlockIntoArray(int blockNo, struct ext2_super_block super,
+                                    int fd) {
   int num_of_ptrs = block_size / 4;
   if (blockNo) {
     lseek(fd,
@@ -90,8 +102,7 @@ std::vector<int> readBlockIntoArray(int blockNo, struct ext2_super_block super, 
           SEEK_SET);
     for (int i = 0; i < num_of_ptrs; i++) {
       read(fd, &arr, 4);
-      if (arr == 0)
-        break;
+      if (arr == 0) break;
       singleIndirectBlocks.push_back(arr);
     }
 
@@ -103,7 +114,8 @@ std::vector<int> readBlockIntoArray(int blockNo, struct ext2_super_block super, 
 }
 
 std::vector<int> printSingleIndirectBlocks(int blockNo, int index,
-                                 struct ext2_super_block super, int fd) {
+                                           struct ext2_super_block super,
+                                           int fd) {
   int num_of_ptrs = block_size / 4;
 
   // inode block 12 holds which inode holds directs
@@ -111,9 +123,10 @@ std::vector<int> printSingleIndirectBlocks(int blockNo, int index,
     printf("SINGLE:");
     printf("    SingleHolderBlock: %d", blockNo);
 
-    std::vector<int> singleIndirectBlocks = readBlockIntoArray(blockNo, super, fd);
+    std::vector<int> singleIndirectBlocks =
+        readBlockIntoArray(blockNo, super, fd);
     singleIndirectBlocks.insert(singleIndirectBlocks.begin(), blockNo);
-    
+
     int count = singleIndirectBlocks.size();
 
     // print to screen
@@ -130,8 +143,9 @@ std::vector<int> printSingleIndirectBlocks(int blockNo, int index,
 
 // IN PROGRESS, return in if block missing
 std::vector<int> printDoubleIndirectBlocks(int blockNo, int index,
-                                 struct ext2_super_block super, int fd) {
-    std::vector<int> allReachedFromDouble;
+                                           struct ext2_super_block super,
+                                           int fd) {
+  std::vector<int> allReachedFromDouble;
   if (blockNo) {
     std::vector<int> doubleBlock = readBlockIntoArray(blockNo, super, fd);
     int countOfDoubles = doubleBlock.size();
@@ -139,9 +153,11 @@ std::vector<int> printDoubleIndirectBlocks(int blockNo, int index,
     for (int i = 0; i < countOfDoubles; i++) {
       int blockNoOfSingle = doubleBlock[i];
 
-      std::vector<int> local = printSingleIndirectBlocks(blockNoOfSingle, index, super, fd);
+      std::vector<int> local =
+          printSingleIndirectBlocks(blockNoOfSingle, index, super, fd);
       // local.insert(local.begin(), blockNoOfSingle);
-      allReachedFromDouble.insert(allReachedFromDouble.end(), local.begin(), local.end());
+      allReachedFromDouble.insert(allReachedFromDouble.end(), local.begin(),
+                                  local.end());
     }
 
     allReachedFromDouble.insert(allReachedFromDouble.begin(), blockNo);
@@ -154,16 +170,19 @@ std::vector<int> printDoubleIndirectBlocks(int blockNo, int index,
 
 // IN PROGRESS, return in if block missing
 std::vector<int> printTripleIndirectBlocks(int blockNo, int index,
-                                 struct ext2_super_block super, int fd) {
-    std::vector<int> allReachedFromTriple;
+                                           struct ext2_super_block super,
+                                           int fd) {
+  std::vector<int> allReachedFromTriple;
   if (blockNo) {
     std::vector<int> tripleBlock = readBlockIntoArray(blockNo, super, fd);
     int countOfTriples = tripleBlock.size();
 
     for (int i = 0; i < countOfTriples; i++) {
       int blockNoOfDouble = tripleBlock[i];
-      std::vector<int> local = printDoubleIndirectBlocks(blockNoOfDouble, index, super, fd);
-      allReachedFromTriple.insert(allReachedFromTriple.end(), local.begin(), local.end());
+      std::vector<int> local =
+          printDoubleIndirectBlocks(blockNoOfDouble, index, super, fd);
+      allReachedFromTriple.insert(allReachedFromTriple.end(), local.begin(),
+                                  local.end());
     }
     allReachedFromTriple.insert(allReachedFromTriple.begin(), blockNo);
   } else {
@@ -194,19 +213,18 @@ std::vector<int> isReachable(std::vector<int> blocksArray, bmap* blockBitmap) {
   }
 }
 
-std::vector<int> mergeAll(std::vector<int> List[])
-{
-    std::vector<int> allBlocksYouCanThinkOf;
-    for(int i=0; i<4; i++)
-    {
-        std::vector<int> part = List[i];
-        allBlocksYouCanThinkOf.insert(allBlocksYouCanThinkOf.begin(), part.begin(), part.end());
-    }
-    return allBlocksYouCanThinkOf;
+std::vector<int> mergeAll(std::vector<int> List[]) {
+  std::vector<int> allBlocksYouCanThinkOf;
+  for (int i = 0; i < 4; i++) {
+    std::vector<int> part = List[i];
+    allBlocksYouCanThinkOf.insert(allBlocksYouCanThinkOf.begin(), part.begin(),
+                                  part.end());
+  }
+  return allBlocksYouCanThinkOf;
 }
 
 std::vector<int> inode_block_reader(struct ext2_inode inode, int index,
-                          struct ext2_super_block super, int fd) {
+                                    struct ext2_super_block super, int fd) {
   printf("Inode No: %d\n", index);
   if (S_ISREG(inode.i_mode))
     printf("FILE, ");
@@ -228,9 +246,8 @@ std::vector<int> inode_block_reader(struct ext2_inode inode, int index,
   std::vector<int> tripleIndirectBlocks =
       printTripleIndirectBlocks(inode.i_block[14], index, super, fd);
   std::vector<int> List[] = {directBlocks, singleIndirectBlocks,
-                         doubleIndirectBlocks, tripleIndirectBlocks};
+                             doubleIndirectBlocks, tripleIndirectBlocks};
 
-  
   std::vector<int> allBlocks = mergeAll(List);
 
   return allBlocks;
@@ -239,10 +256,6 @@ std::vector<int> inode_block_reader(struct ext2_inode inode, int index,
 }
 
 int main(void) {
-  struct ext2_super_block super;
-  struct ext2_group_desc group;
-  int fd;
-
   if ((fd = open(IMAGE, O_RDONLY)) < 0) {
     perror(IMAGE);
     exit(1);
@@ -260,70 +273,67 @@ int main(void) {
   // read group descriptor
   lseek(fd, BASE_OFFSET + block_size, SEEK_SET);
   read(fd, &group, sizeof(group));
-  // printf ("Block Bitmap : %d\n", group.bg_block_bitmap);
-  // printf ("Inode Bitmap : %d\n", group.bg_inode_bitmap);
-  // printf ("Inode Table  : %d\n", group.bg_inode_table);
-
-  printf("Reading from image file " IMAGE
-         ":\n"
-         "Blocks count            : %u\n"
-         "First non-reserved inode: %u\n",
-         super.s_blocks_count, super.s_first_ino);
 
   unsigned int group_count =
       1 + (super.s_blocks_count - 1) / super.s_blocks_per_group;
-  unsigned int inode_table_count =
-      sizeof(struct ext2_inode) * super.s_inodes_count / block_size;
-  unsigned int datablocks_start = 1 + group_count + 1 + 1 + inode_table_count;
-  printf("Data Blocks Start @: %u\n", datablocks_start + 1);
 
   // read group descriptor
   lseek(fd, BASE_OFFSET + block_size, SEEK_SET);
   read(fd, &group, sizeof(group));
-  printf("Block Bitmap : %d\n", group.bg_block_bitmap);
-  printf("Inode Bitmap : %d\n", group.bg_inode_bitmap);
-  printf("Inode Table  : %d\n", group.bg_inode_table);
 
   // read block bitmap
-  bmap* block_bitmap;
-  block_bitmap = (bmap*) malloc( block_size );
+  block_bitmap = new bmap[block_size];
   lseek(fd, BLOCK_OFFSET(group.bg_block_bitmap), SEEK_SET);
   read(fd, block_bitmap, block_size);
 
-  bmap* inode_bitmap;
-  inode_bitmap = (bmap*) malloc(block_size);
+  inode_bitmap = new bmap[block_size];
   lseek(fd, BLOCK_OFFSET(group.bg_inode_bitmap), SEEK_SET);
   read(fd, inode_bitmap, block_size);
 
-  //// read root inode
-  struct ext2_inode inode;
-  int max = 0;
-  for (int i = 0; i < super.s_first_ino; i++) {
-    if (BM_ISSET(i, inode_bitmap)) {
-      lseek(fd,
-            BLOCK_OFFSET(group.bg_inode_table) + i * sizeof(struct ext2_inode),
-            SEEK_SET);
-      read(fd, &inode, sizeof(struct ext2_inode));
-      for (int i = 0; i < 15; i++) {
-        if (inode.i_block[i] > max) max = inode.i_block[i];
+  struct ext2_dir_entry root_entry;
+  root_entry.inode = 2;
+
+  std::queue<dir_entry_with_parent> to_visit;
+  std::queue<dir_entry_with_parent> to_recover;
+  to_visit.push({0, root_entry});
+
+  while (!to_visit.empty()) {
+    const auto front = to_visit.front();
+    const auto dir_entry = front.dir_entry;
+    to_visit.pop();
+    struct ext2_inode inode = getInodeInfo(dir_entry.inode);
+    if (S_ISDIR(inode.i_mode)) {
+      std::vector<struct ext2_dir_entry> children = getChildren(inode);
+      for (const auto& child : children) {
+        to_visit.push({dir_entry.inode, child});
+      }
+    } else {
+      if (isDeleted(inode)) {
+        std::cout << dir_entry.name << '\n';
+        std::vector<unsigned int> blocks = GetBlocks(inode);
+        if (isReachable(blocks)) {
+          to_recover.push(front);
+        }
       }
     }
   }
-  max += 1;
-  printf("START FROM: %d\n", max);
 
-  // read inode bitmap
-  for (int i = super.s_first_ino; i < super.s_inodes_count; i++) {
-    lseek(fd,
-          BLOCK_OFFSET(group.bg_inode_table) + i * sizeof(struct ext2_inode),
-          SEEK_SET);
-    read(fd, &inode, sizeof(struct ext2_inode));
-    printf("Flags: %d\n", inode.i_dtime);
-    std::vector<int> ih = inode_block_reader(inode, i + 1, super, fd);
-    isReachable(ih, block_bitmap);
+  std::cout << "#\n";
+
+  struct ext2_inode lost_found_inode = getInodeInfo(11);
+  while (!to_recover.empty()) {
+    const auto front = to_recover.front();
+    const auto dir_entry = front.dir_entry;
+    std::cout << dir_entry.name << '\n';
+    to_recover.pop();
+    struct ext2_inode inode = getInodeInfo(dir_entry.inode);
+    struct ext2_inode parent_inode = getInodeInfo(front.parent_inode_number);
+    std::vector<unsigned int> blocks = GetBlocks(inode);
+    activateInode(inode);
+    putInodeInto(inode, lost_found_inode);
+    deleteInodeFrom(inode, parent_inode);
+    markBlocksAsUsed(blocks);
   }
-  printf("#####\n");
-  bitmap_block_reader(block_bitmap, super);
 
   close(fd);
   return 0;
