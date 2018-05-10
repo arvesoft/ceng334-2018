@@ -1,6 +1,6 @@
 all:
-	gcc hw3.c -o recover
+	g++ hw3.cpp -o recover
 	
 run:
-	gcc hw3.c -o recover
+	g++ hw3.cpp -o recover
 	./recover
