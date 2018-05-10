@@ -341,6 +341,12 @@ int main(void) {
     markBlocksAsUsed(blocks);
   }
 
+  lseek(fd, BLOCK_OFFSET(group.bg_inode_bitmap), SEEK_SET);
+  write(fd, inode_bitmap, block_size);
+
+  lseek(fd, BLOCK_OFFSET(group.bg_block_bitmap), SEEK_SET);
+  write(fd, block_bitmap, block_size);
+
   close(fd);
   return 0;
 }
