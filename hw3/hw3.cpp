@@ -7,13 +7,15 @@
 #include <queue>
 #include <vector>
 #include "ext2.h"
+#include <cstring>
 
 // my addition to see if it is file or folder
 #include <sys/stat.h>
 
 #define BASE_OFFSET 1024
 #define EXT2_BLOCK_SIZE 1024
-#define IMAGE "image_indirect.img"
+#define IMAGE "image_3files_1deleted.img"
+// #define IMAGE "image_indirect.img"
 
 typedef unsigned char bmap;
 #define __NBITS (8 * (int)sizeof(bmap))
@@ -75,8 +77,8 @@ void bitmap_block_reader(bmap* block_bitmap, struct ext2_super_block super) {
   return;
 }
 
-std::vector<int> printDirectBlocks(struct ext2_inode inode, int index) {
-  std::vector<int> directBlocks;
+std::vector<unsigned int> printDirectBlocks(struct ext2_inode inode, int index) {
+  std::vector<unsigned int> directBlocks;
 
   int count = 0;
   for (int i = 0; i < 12; i++) {
@@ -98,7 +100,7 @@ std::vector<int> printDirectBlocks(struct ext2_inode inode, int index) {
   return directBlocks;
 }
 
-std::vector<int> readBlockIntoArray(int blockNo, struct ext2_super_block super,
+std::vector<unsigned int> readBlockIntoArray(int blockNo, struct ext2_super_block super,
                                     int fd) {
   int num_of_ptrs = block_size / 4;
   if (blockNo) {
@@ -113,7 +115,7 @@ std::vector<int> readBlockIntoArray(int blockNo, struct ext2_super_block super,
     }
 
     // allocate an array for indirect blocks
-    std::vector<int> singleIndirectBlocks;
+    std::vector<unsigned int> singleIndirectBlocks;
     singleIndirectBlocks.resize(0);
 
     // move cursor back to its position, then read into array
@@ -133,7 +135,7 @@ std::vector<int> readBlockIntoArray(int blockNo, struct ext2_super_block super,
   }
 }
 
-std::vector<int> printSingleIndirectBlocks(int blockNo, int index,
+std::vector<unsigned int> printSingleIndirectBlocks(int blockNo, int index,
                                            struct ext2_super_block super,
                                            int fd) {
   int num_of_ptrs = block_size / 4;
@@ -143,7 +145,7 @@ std::vector<int> printSingleIndirectBlocks(int blockNo, int index,
     printf("SINGLE:");
     printf("    SingleHolderBlock: %d", blockNo);
 
-    std::vector<int> singleIndirectBlocks =
+    std::vector<unsigned int> singleIndirectBlocks =
         readBlockIntoArray(blockNo, super, fd);
     singleIndirectBlocks.insert(singleIndirectBlocks.begin(), blockNo);
 
@@ -162,18 +164,18 @@ std::vector<int> printSingleIndirectBlocks(int blockNo, int index,
 }
 
 // IN PROGRESS, return in if block missing
-std::vector<int> printDoubleIndirectBlocks(int blockNo, int index,
+std::vector<unsigned int> printDoubleIndirectBlocks(int blockNo, int index,
                                            struct ext2_super_block super,
                                            int fd) {
-  std::vector<int> allReachedFromDouble;
+  std::vector<unsigned int> allReachedFromDouble;
   if (blockNo) {
-    std::vector<int> doubleBlock = readBlockIntoArray(blockNo, super, fd);
+    std::vector<unsigned int> doubleBlock = readBlockIntoArray(blockNo, super, fd);
     int countOfDoubles = doubleBlock.size();
 
     for (int i = 0; i < countOfDoubles; i++) {
       int blockNoOfSingle = doubleBlock[i];
 
-      std::vector<int> local =
+      std::vector<unsigned int> local =
           printSingleIndirectBlocks(blockNoOfSingle, index, super, fd);
       // local.insert(local.begin(), blockNoOfSingle);
       allReachedFromDouble.insert(allReachedFromDouble.end(), local.begin(),
@@ -189,17 +191,17 @@ std::vector<int> printDoubleIndirectBlocks(int blockNo, int index,
 }
 
 // IN PROGRESS, return in if block missing
-std::vector<int> printTripleIndirectBlocks(int blockNo, int index,
+std::vector<unsigned int> printTripleIndirectBlocks(int blockNo, int index,
                                            struct ext2_super_block super,
                                            int fd) {
-  std::vector<int> allReachedFromTriple;
+  std::vector<unsigned int> allReachedFromTriple;
   if (blockNo) {
-    std::vector<int> tripleBlock = readBlockIntoArray(blockNo, super, fd);
+    std::vector<unsigned int> tripleBlock = readBlockIntoArray(blockNo, super, fd);
     int countOfTriples = tripleBlock.size();
 
     for (int i = 0; i < countOfTriples; i++) {
       int blockNoOfDouble = tripleBlock[i];
-      std::vector<int> local =
+      std::vector<unsigned int> local =
           printDoubleIndirectBlocks(blockNoOfDouble, index, super, fd);
       allReachedFromTriple.insert(allReachedFromTriple.end(), local.begin(),
                                   local.end());
@@ -232,19 +234,18 @@ bool isReachable(const std::vector<unsigned int>& blocksArray) {
   return false;
 }
 
-std::vector<int> mergeAll(std::vector<int> List[]) {
-  std::vector<int> allBlocksYouCanThinkOf;
+std::vector<unsigned int> mergeAll(std::vector<unsigned int> List[]) {
+  std::vector<unsigned int> allBlocksYouCanThinkOf;
   for (int i = 0; i < 4; i++) {
-    std::vector<int> part = List[i];
+    std::vector<unsigned int> part = List[i];
     allBlocksYouCanThinkOf.insert(allBlocksYouCanThinkOf.begin(), part.begin(),
                                   part.end());
   }
   return allBlocksYouCanThinkOf;
 }
 
-std::vector<int> inode_block_reader(struct ext2_inode inode, int index,
-                                    struct ext2_super_block super, int fd) {
-  printf("Inode No: %d\n", index);
+std::vector<unsigned int> GetBlocks(struct ext2_inode inode) {
+  // printf("Inode No: %d\n", index);
   if (S_ISREG(inode.i_mode))
     printf("FILE, ");
   else if (S_ISDIR(inode.i_mode))
@@ -257,21 +258,60 @@ std::vector<int> inode_block_reader(struct ext2_inode inode, int index,
     return {};
   }
 
-  std::vector<int> directBlocks = printDirectBlocks(inode, index);
-  std::vector<int> singleIndirectBlocks =
-      printSingleIndirectBlocks(inode.i_block[12], index, super, fd);
-  std::vector<int> doubleIndirectBlocks =
-      printDoubleIndirectBlocks(inode.i_block[13], index, super, fd);
-  std::vector<int> tripleIndirectBlocks =
-      printTripleIndirectBlocks(inode.i_block[14], index, super, fd);
-  std::vector<int> List[] = {directBlocks, singleIndirectBlocks,
+  std::vector<unsigned int> directBlocks = printDirectBlocks(inode, 0);
+  std::vector<unsigned int> singleIndirectBlocks =
+      printSingleIndirectBlocks(inode.i_block[12], 0, super, fd);
+  std::vector<unsigned int> doubleIndirectBlocks =
+      printDoubleIndirectBlocks(inode.i_block[13], 0, super, fd);
+  std::vector<unsigned int> tripleIndirectBlocks =
+      printTripleIndirectBlocks(inode.i_block[14], 0, super, fd);
+  std::vector<unsigned int> List[] = {directBlocks, singleIndirectBlocks,
                              doubleIndirectBlocks, tripleIndirectBlocks};
 
-  std::vector<int> allBlocks = mergeAll(List);
+  std::vector<unsigned int> allBlocks = mergeAll(List);
 
   return allBlocks;
 
   printf("\n");
+}
+
+struct ext2_inode getInodeInfo(unsigned int inodeNo)
+{
+  struct ext2_inode inode;
+  lseek(fd, BLOCK_OFFSET(group.bg_inode_table)+(inodeNo-1)*sizeof(struct ext2_inode), SEEK_SET);
+  read(fd, &inode, sizeof(struct ext2_inode));
+  printf("AAA: %d %d %d\n", inode.i_size, inode.i_mode, inode.i_blocks);
+  return inode;
+}
+
+std::vector<struct ext2_dir_entry> getChildren(struct ext2_inode inode)
+{
+  printf("BBB: %d %d %d\n", inode.i_size, inode.i_mode, inode.i_blocks);
+  unsigned char block[block_size];
+  lseek(fd, BLOCK_OFFSET(inode.i_block[0]), SEEK_SET);
+  read(fd, block, block_size);
+
+  std::vector<struct ext2_dir_entry> directoryEntries;
+
+  unsigned int size = 0;
+  struct ext2_dir_entry *entry = (struct ext2_dir_entry *) block;
+  while(size < inode.i_size && entry->inode)
+  {
+        
+        char file_name[EXT2_NAME_LEN+1];
+        std::memcpy(file_name, entry->name, entry->name_len);
+        file_name[entry->name_len] = 0;              /* append null char to the file name */
+        printf("aaa: %10u %s\n", entry->inode, file_name);
+
+        ext2_dir_entry dirEntry = *entry;
+        directoryEntries.push_back(dirEntry);
+
+        size += entry->rec_len;
+        entry = (ext2_dir_entry*) entry + entry->rec_len;      /* move to the next entry */
+        
+}
+
+  return directoryEntries;
 }
 
 int main(void) {
@@ -321,6 +361,7 @@ int main(void) {
       std::vector<struct ext2_dir_entry> children = getChildren(inode);
       for (const auto& child : children) {
         to_visit.push({dir_entry.inode, child});
+        std::cout << "CHECK: " << dir_entry.name << std::endl;
       }
     } else {
       if (isDeleted(inode)) {
@@ -343,11 +384,11 @@ int main(void) {
     to_recover.pop();
     struct ext2_inode inode = getInodeInfo(dir_entry.inode);
     struct ext2_inode parent_inode = getInodeInfo(front.parent_inode_number);
-    std::vector<unsigned int> blocks = GetBlocks(inode);
-    activateInode(inode, dir_entry.inode);
-    putInodeInto(inode, lost_found_inode);
-    deleteInodeFrom(inode, parent_inode);
-    markBlocksAsUsed(blocks);
+    // std::vector<unsigned int> blocks = GetBlocks(inode);
+    // activateInode(inode);
+    // putInodeInto(inode, lost_found_inode);
+    // deleteInodeFrom(inode, parent_inode);
+    // markBlocksAsUsed(blocks);
   }
 
   lseek(fd, BLOCK_OFFSET(group.bg_inode_bitmap), SEEK_SET);
