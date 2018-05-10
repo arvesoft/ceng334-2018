@@ -22,7 +22,7 @@ size_t number_of_foods;
 size_t termination_time;
 int is_running;
 
-pthread_mutex_t row_lock[GRIDSIZE];
+pthread_mutex_t row_lock[GRIDSIZE*GRIDSIZE];
 pthread_mutex_t delay_mutex;
 pthread_mutex_t sleeping_mutex;
 
@@ -81,7 +81,7 @@ void* AntRoutine(void* args) {
         const int newx = ant.cur_x + dx[i];
         const int newy = ant.cur_y + dy[i];
         if (!IsValid(newx, newy)) continue;
-        pthread_mutex_lock(row_lock + newx);
+        pthread_mutex_lock(row_lock + newx*GRIDSIZE + newy);
         const size_t cell = lookCharAt(newx, newy);
         if (cell == FOOD_CELL) {
           if (status == ANT) {
@@ -94,13 +94,13 @@ void* AntRoutine(void* args) {
             found_food = 1;
           }
         }
-        pthread_mutex_unlock(row_lock + newx);
+        pthread_mutex_unlock(row_lock + newx*GRIDSIZE + newy);
       }
       for (size_t i = 0, r = rand() % 8; i < 8 && !has_moved; i++) {
         const int newx = ant.cur_x + dx[(i + r) % 8];
         const int newy = ant.cur_y + dy[(i + r) % 8];
         if (!IsValid(newx, newy)) continue;
-        pthread_mutex_lock(row_lock + newx);
+        pthread_mutex_lock(row_lock + newx*GRIDSIZE + newy);
         const size_t cell = lookCharAt(newx, newy);
         if (cell == EMPTY_CELL) {
           if (is_tired) {
@@ -134,7 +134,7 @@ void* AntRoutine(void* args) {
             has_moved = 1;
           }
         }
-        pthread_mutex_unlock(row_lock + newx);
+        pthread_mutex_unlock(row_lock + newx*GRIDSIZE + newy);
       }
     } else if (status != ANTwSLEEP && status != ANTwFOODwSLEEP) {
       char new_status = ANTwSLEEP;
@@ -168,13 +168,18 @@ void Initialize() {
     perror("Condition variable init failed.");
   }
   for (size_t i = 0; i < GRIDSIZE; i++) {
-    if (pthread_mutex_init(row_lock + i, NULL)) {
-      perror("Mutex init failed.");
-    }
     for (size_t j = 0; j < GRIDSIZE; j++) {
       putCharTo(i, j, EMPTY_CELL);
     }
   }
+  
+  for (size_t i = 0; i < GRIDSIZE*GRIDSIZE; i++) {
+    if (pthread_mutex_init(row_lock + i, NULL)) {
+      perror("Mutex init failed.");
+    }
+   }
+  
+  
 
   ants = (Ant*)malloc(sizeof(Ant) * number_of_ants);
   PutOnEmptyCells(ANT, number_of_ants, ants);
