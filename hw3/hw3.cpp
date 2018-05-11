@@ -13,6 +13,16 @@
 // my addition to see if it is file or folder
 #include <sys/stat.h>
 
+#define EXT2_S_IRUSR 0x0100
+#define EXT2_S_IWUSR 0x0080
+#define EXT2_S_IXUSR 0x0040
+#define EXT2_S_IRGRP 0x0020
+#define EXT2_S_IWGRP 0x0010
+#define EXT2_S_IXGRP 0x0008
+#define EXT2_S_IROTH 0x0004
+#define EXT2_S_IWOTH 0x0002
+#define EXT2_S_IXOTH 0x0001
+
 #define BASE_OFFSET 1024
 #define EXT2_BLOCK_SIZE 1024
 // #define IMAGE "image_3files_1deleted.img"
@@ -54,10 +64,16 @@ bool isDeleted(struct ext2_inode& inode) {
 void activateInode(struct ext2_inode& inode, unsigned int inode_no) {
   inode.i_flags = 0;
   inode.i_dtime = 0;
-  inode.i_mode = EXT2_FT_REG_FILE;
+  inode.i_links_count = 1;
+  inode.i_mode = EXT2_S_IFREG | EXT2_S_IRUSR;
   BM_SET(inode_no, inode_bitmap);
   group.bg_free_inodes_count--;
   super.s_free_inodes_count--;
+  lseek(fd,
+        BLOCK_OFFSET(group.bg_inode_table) +
+            (inode_no - 1) * sizeof(struct ext2_inode),
+        SEEK_SET);
+  write(fd, &inode, sizeof(struct ext2_inode));
 }
 
 void markBlocksAsUsed(const std::vector<unsigned int>& blocks) {
@@ -299,8 +315,8 @@ struct ext2_inode getInodeInfo(unsigned int inodeNo) {
             (inodeNo - 1) * sizeof(struct ext2_inode),
         SEEK_SET);
   read(fd, &inode, sizeof(struct ext2_inode));
-  // printf("getInodeInfo: %d %d %d\n", inode.i_size, inode.i_mode,
-  // inode.i_blocks);
+  printf("getInodeInfo(%d): %d %d %d %d %d\n", inodeNo, inode.i_size,
+         inode.i_mode, inode.i_blocks, inode.i_flags, inode.i_links_count);
   return inode;
 }
 
