@@ -59,7 +59,7 @@ void markBlocksAsUsed(const std::vector<unsigned int>& blocks) {
   super.s_free_blocks_count -= blocks.size();
 }
 
-void bitmap_block_reader(bmap* block_bitmap, struct ext2_super_block super) {
+void bitmap_block_reader() {
   for (int i = 1; i < super.s_blocks_count; i++) {
     int j = i;
     while (j > 9) j -= 10;
@@ -92,12 +92,12 @@ std::vector<unsigned int> printDirectBlocks(struct ext2_inode inode,
     }
   }
 
-  printf("DIRECT:");
-  printf("    #: %d", count);
-  printf("    [");
-  for (int i = 0; i < count; i++)
-    if (directBlocks[i] != -1) printf("%d ", directBlocks[i]);
-  printf("]\n");
+  // printf("DIRECT:");
+  // printf("    #: %d", count);
+  // printf("    [");
+  // for (int i = 0; i < count; i++)
+  //   if (directBlocks[i] != -1) printf("%d ", directBlocks[i]);
+  // printf("]\n");
   return directBlocks;
 }
 
@@ -208,6 +208,7 @@ std::vector<unsigned int> printTripleIndirectBlocks(
                                   local.end());
     }
     allReachedFromTriple.insert(allReachedFromTriple.begin(), blockNo);
+    return allReachedFromTriple;
   } else {
     return {};
   }
@@ -248,16 +249,17 @@ std::vector<unsigned int> mergeAll(std::vector<unsigned int> List[]) {
 std::vector<unsigned int> GetBlocks(struct ext2_inode inode) {
   // printf("Inode No: %d\n", index);
   if (S_ISREG(inode.i_mode))
-    printf("FILE, ");
+    printf("FILE\n ");
   else if (S_ISDIR(inode.i_mode))
-    printf("FOLDER, ");
+    printf("FOLDER\n ");
 
-  printf("Size: %d, #Blocks: %u\n", inode.i_size,
-         inode.i_blocks / (block_size / 512));
-  if (inode.i_size == 0) {
-    printf("\n");
-    return {};
-  }
+  // printf("Size: %d, #Blocks: %u\n", inode.i_size,
+  //        inode.i_blocks / (block_size / 512));
+
+  // if (inode.i_size == 0) {
+  //   // printf("\n");
+  //   return {};
+  // }
 
   std::vector<unsigned int> directBlocks = printDirectBlocks(inode, 0);
   std::vector<unsigned int> singleIndirectBlocks =
@@ -272,9 +274,14 @@ std::vector<unsigned int> GetBlocks(struct ext2_inode inode) {
 
   std::vector<unsigned int> allBlocks = mergeAll(List);
 
+  std::cout << "getBlocks(): [";
+  for(int i=0; i < allBlocks.size(); i++)
+    std::cout << allBlocks[i] << " " ;
+  std::cout <<  "]" << std::endl;
+
   return allBlocks;
 
-  printf("\n");
+  // printf("\n");
 }
 
 struct ext2_inode getInodeInfo(unsigned int inodeNo) {
@@ -284,12 +291,12 @@ struct ext2_inode getInodeInfo(unsigned int inodeNo) {
             (inodeNo - 1) * sizeof(struct ext2_inode),
         SEEK_SET);
   read(fd, &inode, sizeof(struct ext2_inode));
-  printf("AAA: %d %d %d\n", inode.i_size, inode.i_mode, inode.i_blocks);
+  // printf("getInodeInfo: %d %d %d\n", inode.i_size, inode.i_mode, inode.i_blocks);
   return inode;
 }
 
 std::vector<struct ext2_dir_entry> getChildren(struct ext2_inode inode) {
-  printf("BBB: %d %d %d\n", inode.i_size, inode.i_mode, inode.i_blocks);
+  // printf("BBB: %d %d %d\n", inode.i_size, inode.i_mode, inode.i_blocks);
   unsigned char block[block_size];
   lseek(fd, BLOCK_OFFSET(inode.i_block[0]), SEEK_SET);
   read(fd, block, block_size);
@@ -303,7 +310,7 @@ std::vector<struct ext2_dir_entry> getChildren(struct ext2_inode inode) {
     char file_name[EXT2_NAME_LEN + 1];
     std::memcpy(file_name, entry->name, entry->name_len);
     file_name[entry->name_len] = 0; /* append null char to the file name */
-    printf("aaa: %10u %10u %s\n", entry->inode, entry->rec_len, file_name);
+    printf("    getChildren: %10u %10u %s\n", entry->inode, entry->rec_len, file_name);
 
     ext2_dir_entry dirEntry = *entry;
     directoryEntries.push_back(dirEntry);
@@ -315,6 +322,16 @@ std::vector<struct ext2_dir_entry> getChildren(struct ext2_inode inode) {
   }
 
   return directoryEntries;
+}
+
+bool isInTheVector(const std::vector<unsigned int>& vector, unsigned int element)
+{
+  for(int i=0; i<vector.size(); i++)
+  {
+    if (vector[i] == element)
+      return true;
+  }
+  return false;
 }
 
 int main(void) {
@@ -351,30 +368,44 @@ int main(void) {
   struct ext2_dir_entry root_entry;
   root_entry.inode = 2;
 
+  std::vector<unsigned int> already_visited;
   std::queue<dir_entry_with_parent> to_visit;
   std::queue<dir_entry_with_parent> to_recover;
   to_visit.push({0, root_entry});
+
+  bitmap_block_reader();
 
   while (!to_visit.empty()) {
     const auto front = to_visit.front();
     const auto dir_entry = front.dir_entry;
     to_visit.pop();
+    std::cout << "ANALYZING: " << dir_entry.inode << std::endl;
+    // add to visited inode no; so it does not loop to infinity
+    already_visited.push_back(dir_entry.inode);
     struct ext2_inode inode = getInodeInfo(dir_entry.inode);
+    std::cout << "MODIFIED : " << inode.i_mtime << std::endl;
     if (S_ISDIR(inode.i_mode)) {
       std::vector<struct ext2_dir_entry> children = getChildren(inode);
       for (const auto& child : children) {
-        // to_visit.push({dir_entry.inode, child});
-        std::cout << "CHECK: " << dir_entry.name << std::endl;
+        // if it is visited before, do not add to queue
+        if ( isInTheVector(already_visited, child.inode))
+          continue;
+        to_visit.push({dir_entry.inode, child});
       }
     } else {
       if (isDeleted(inode)) {
-        std::cout << dir_entry.name << '\n';
+        std::cout << "DELETED!" << '\n';
         std::vector<unsigned int> blocks = GetBlocks(inode);
         if (isReachable(blocks)) {
           to_recover.push(front);
         }
       }
+      else{
+        std::cout << "ALIVE" << '\n';
+        std::vector<unsigned int> blocks = GetBlocks(inode);
+      }
     }
+    std::cout << std::endl;
   }
 
   std::cout << "#\n";
@@ -387,7 +418,7 @@ int main(void) {
     to_recover.pop();
     struct ext2_inode inode = getInodeInfo(dir_entry.inode);
     struct ext2_inode parent_inode = getInodeInfo(front.parent_inode_number);
-    // std::vector<unsigned int> blocks = GetBlocks(inode);
+    std::vector<unsigned int> blocks = GetBlocks(inode);
     // activateInode(inode);
     // putInodeInto(inode, lost_found_inode);
     // deleteInodeFrom(inode, parent_inode);
