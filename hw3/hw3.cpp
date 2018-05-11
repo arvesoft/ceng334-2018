@@ -337,7 +337,51 @@ bool isInTheVector(const std::vector<unsigned int>& vector,
   return false;
 }
 
-void putInodeInto(struct ext2_inode inode, struct ext2_inode lost_found_inode) {
+void putInodeInto(struct ext2_inode& inode, struct ext2_inode& lost_found_inode)
+{
+  /// printf("BBB: %d %d %d\n", lost_found_inode.i_size, lost_found_inode.i_mode, lost_found_inode.i_blocks);
+  unsigned char block[block_size];
+  lseek(fd, BLOCK_OFFSET(lost_found_inode.i_block[0]), SEEK_SET);
+  read(fd, block, block_size);
+
+  std::vector<struct ext2_dir_entry> directoryEntries;
+
+  unsigned int size = 0;
+  unsigned int previousSize = 0;
+  struct ext2_dir_entry* entry = (struct ext2_dir_entry*)block;
+  struct ext2_dir_entry* previousEntry = (struct ext2_dir_entry*)block;
+  // for (int i = 0; i < 100; i++) printf("%d %c\n", block[i], block[i]);
+  while (size < lost_found_inode.i_size && entry->inode) {
+    char file_name[EXT2_NAME_LEN + 1];
+    std::memcpy(file_name, entry->name, entry->name_len);
+    file_name[entry->name_len] = 0; /* append null char to the file name */
+    printf("    getChildren: %10u %10u %s\n", entry->inode, entry->rec_len, file_name);
+
+    ext2_dir_entry dirEntry = *entry;
+    directoryEntries.push_back(dirEntry);
+
+    previousSize = size;
+    size += entry->rec_len;
+    const size_t real_len = realDirEntrySize(entry);
+    previousEntry = entry;
+    entry =
+        (ext2_dir_entry*)((void*)entry + real_len); /* move to the next entry */
+  }
+  // you know the previous size, so only calculate the last entry size and add to previousSize
+  // struct ext2_dir_entry {
+  //       unsigned int   inode;     /* Inode number */
+  //       unsigned short rec_len;   /* Directory entry length */
+  //       unsigned char  name_len;  /* Name length */
+  //       unsigned char  file_type;
+  //       char           name[];    /* File name, up to EXT2_NAME_LEN */
+  // };
+  unsigned int lastEntrySize = realDirEntrySize(entry);
+  unsigned int finalSize = previousSize + lastEntrySize;
+  std::cout << "LAST: " << finalSize << std::endl;
+
+  
+
+
 
 }
 
