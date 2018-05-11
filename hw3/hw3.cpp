@@ -52,6 +52,7 @@ bool isDeleted(struct ext2_inode& inode) {
 }
 
 void activateInode(struct ext2_inode& inode, unsigned int inode_no) {
+  inode.i_flags = 0;
   inode.i_dtime = 0;
   inode.i_mode = EXT2_FT_REG_FILE;
   BM_SET(inode_no, inode_bitmap);
@@ -372,7 +373,7 @@ void putInodeInto(struct ext2_dir_entry* entry_to_put,
 }
 
 int main(void) {
-  if ((fd = open(IMAGE, O_RDONLY)) < 0) {
+  if ((fd = open(IMAGE, O_RDWR)) < 0) {
     perror(IMAGE);
     exit(1);
   }
