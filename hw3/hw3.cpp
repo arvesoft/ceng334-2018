@@ -14,8 +14,8 @@
 
 #define BASE_OFFSET 1024
 #define EXT2_BLOCK_SIZE 1024
-#define IMAGE "image_3files_1deleted.img"
-// #define IMAGE "image_indirect.img"
+// #define IMAGE "image_3files_1deleted.img"
+#define IMAGE "image.img"
 
 typedef unsigned char bmap;
 #define __NBITS (8 * (int)sizeof(bmap))
@@ -40,6 +40,8 @@ bmap* block_bitmap;
 bmap* inode_bitmap;
 
 bool isDeleted(struct ext2_inode& inode) {
+  // std::cout << "DeletionControl" << "\n";
+  // std::cout << inode.i_mode << " " << inode.i_dtime << " " << inode.i_size <<  std::endl;
   return inode.i_mode == 0 || inode.i_dtime;
 }
 
@@ -143,8 +145,8 @@ std::vector<unsigned int> printSingleIndirectBlocks(
 
   // inode block 12 holds which inode holds directs
   if (blockNo) {
-    printf("SINGLE:");
-    printf("    SingleHolderBlock: %d", blockNo);
+    // printf("SINGLE:");
+    // printf("    SingleHolderBlock: %d", blockNo);
 
     std::vector<unsigned int> singleIndirectBlocks =
         readBlockIntoArray(blockNo, super, fd);
@@ -153,10 +155,10 @@ std::vector<unsigned int> printSingleIndirectBlocks(
     int count = singleIndirectBlocks.size();
 
     // print to screen
-    printf("    #: %d", count);
-    printf("    [");
-    for (int i = 0; i < count; i++) printf("%d ", singleIndirectBlocks[i]);
-    printf("]\n");
+    // printf("    #: %d", count);
+    // printf("    [");
+    // for (int i = 0; i < count; i++) printf("%d ", singleIndirectBlocks[i]);
+    // printf("]\n");
 
     return singleIndirectBlocks;
   } else {
@@ -221,7 +223,7 @@ bool isReachable(const std::vector<unsigned int>& blocksArray) {
   for (int i = 0; i < count; i++) {
     int blockIndex = blocksArray[i];
     // note the -1 part
-    if (BM_ISSET(blockIndex - 1, block_bitmap)) {
+    if ( ! BM_ISSET(blockIndex - 1, block_bitmap)) {
       printf("REACHED: %d\n", blockIndex);
       reachableCount++;
     } else {
@@ -334,6 +336,11 @@ bool isInTheVector(const std::vector<unsigned int>& vector, unsigned int element
   return false;
 }
 
+void putInodeInto(struct ext2_inode inode, struct ext2_inode lost_found_inode)
+{
+  
+}
+
 int main(void) {
   if ((fd = open(IMAGE, O_RDONLY)) < 0) {
     perror(IMAGE);
@@ -399,7 +406,7 @@ int main(void) {
         if (isReachable(blocks)) {
           to_recover.push(front);
         }
-      }
+      } 
       else{
         std::cout << "ALIVE" << '\n';
         std::vector<unsigned int> blocks = GetBlocks(inode);
@@ -419,10 +426,10 @@ int main(void) {
     struct ext2_inode inode = getInodeInfo(dir_entry.inode);
     struct ext2_inode parent_inode = getInodeInfo(front.parent_inode_number);
     std::vector<unsigned int> blocks = GetBlocks(inode);
-    // activateInode(inode);
-    // putInodeInto(inode, lost_found_inode);
+    activateInode(inode, dir_entry.inode);
+    putInodeInto(inode, lost_found_inode);
     // deleteInodeFrom(inode, parent_inode);
-    // markBlocksAsUsed(blocks);
+    markBlocksAsUsed(blocks);
   }
 
   lseek(fd, BLOCK_OFFSET(group.bg_inode_bitmap), SEEK_SET);
