@@ -6,6 +6,7 @@
 #include <cstring>
 #include <iostream>
 #include <queue>
+#include <unordered_set>
 #include <vector>
 #include "ext2.h"
 
@@ -30,7 +31,7 @@ unsigned int block_size = 0;
 
 struct dir_entry_with_parent {
   unsigned int parent_inode_number;
-  struct ext2_dir_entry dir_entry;
+  struct ext2_dir_entry* dir_entry;
 };
 
 int fd;
@@ -38,6 +39,10 @@ struct ext2_super_block super;
 struct ext2_group_desc group;
 bmap* block_bitmap;
 bmap* inode_bitmap;
+
+size_t realDirEntrySize(struct ext2_dir_entry* entry) {
+  return (8 + entry->name_len + 3) & (~3);
+}
 
 bool isDeleted(struct ext2_inode& inode) {
   // std::cout << "DeletionControl" << "\n";
@@ -298,29 +303,25 @@ struct ext2_inode getInodeInfo(unsigned int inodeNo) {
   return inode;
 }
 
-std::vector<struct ext2_dir_entry> getChildren(struct ext2_inode inode) {
-  // printf("BBB: %d %d %d\n", inode.i_size, inode.i_mode, inode.i_blocks);
+std::vector<struct ext2_dir_entry*> getChildren(struct ext2_inode inode) {
   unsigned char block[block_size];
   lseek(fd, BLOCK_OFFSET(inode.i_block[0]), SEEK_SET);
   read(fd, block, block_size);
 
-  std::vector<struct ext2_dir_entry> directoryEntries;
+  std::vector<struct ext2_dir_entry*> directoryEntries;
 
   unsigned int size = 0;
   struct ext2_dir_entry* entry = (struct ext2_dir_entry*)block;
-  // for (int i = 0; i < 100; i++) printf("%d %c\n", block[i], block[i]);
   while (size < inode.i_size && entry->inode) {
-    char file_name[EXT2_NAME_LEN + 1];
-    std::memcpy(file_name, entry->name, entry->name_len);
-    file_name[entry->name_len] = 0; /* append null char to the file name */
-    printf("    getChildren: %10u %10u %s\n", entry->inode, entry->rec_len,
-           file_name);
+    const size_t real_len = realDirEntrySize(entry);
+    struct ext2_dir_entry* new_entry = (struct ext2_dir_entry*)malloc(real_len);
+    std::memcpy(new_entry, entry, real_len);
+    printf("    getChildren: %10u %10u %.*s\n", entry->inode, entry->rec_len,
+           entry->name_len, entry->name);
 
-    ext2_dir_entry dirEntry = *entry;
-    directoryEntries.push_back(dirEntry);
+    directoryEntries.push_back(new_entry);
 
     size += entry->rec_len;
-    const size_t real_len = (8 + entry->name_len + 3) & (~3);
     entry =
         (ext2_dir_entry*)((void*)entry + real_len); /* move to the next entry */
   }
@@ -374,10 +375,10 @@ int main(void) {
   struct ext2_dir_entry root_entry;
   root_entry.inode = 2;
 
-  std::vector<unsigned int> already_visited;
+  std::unordered_set<unsigned int> visited;
   std::queue<dir_entry_with_parent> to_visit;
   std::queue<dir_entry_with_parent> to_recover;
-  to_visit.push({0, root_entry});
+  to_visit.push({0, &root_entry});
 
   bitmap_block_reader();
 
@@ -385,28 +386,23 @@ int main(void) {
     const auto front = to_visit.front();
     const auto dir_entry = front.dir_entry;
     to_visit.pop();
-    std::cout << "ANALYZING: " << dir_entry.inode << std::endl;
     // add to visited inode no; so it does not loop to infinity
-    already_visited.push_back(dir_entry.inode);
-    struct ext2_inode inode = getInodeInfo(dir_entry.inode);
-    std::cout << "MODIFIED : " << inode.i_mtime << std::endl;
+    visited.insert(dir_entry->inode);
+    struct ext2_inode inode = getInodeInfo(dir_entry->inode);
     if (S_ISDIR(inode.i_mode)) {
-      std::vector<struct ext2_dir_entry> children = getChildren(inode);
-      for (const auto& child : children) {
+      std::vector<struct ext2_dir_entry*> children = getChildren(inode);
+      for (const auto child : children) {
         // if it is visited before, do not add to queue
-        if (isInTheVector(already_visited, child.inode)) continue;
-        to_visit.push({dir_entry.inode, child});
+        if (visited.find(child->inode) != visited.end()) continue;
+        to_visit.push({dir_entry->inode, child});
       }
     } else {
       if (isDeleted(inode)) {
-        std::cout << "DELETED!" << '\n';
+        printf("%.*s\n", dir_entry->name_len, dir_entry->name);
         std::vector<unsigned int> blocks = GetBlocks(inode);
         if (isReachable(blocks)) {
           to_recover.push(front);
         }
-      } else {
-        std::cout << "ALIVE" << '\n';
-        std::vector<unsigned int> blocks = GetBlocks(inode);
       }
     }
     std::cout << std::endl;
@@ -418,14 +414,12 @@ int main(void) {
   while (!to_recover.empty()) {
     const auto front = to_recover.front();
     const auto dir_entry = front.dir_entry;
-    std::cout << dir_entry.name << '\n';
+    printf("%.*s\n", dir_entry->name_len, dir_entry->name);
     to_recover.pop();
-    struct ext2_inode inode = getInodeInfo(dir_entry.inode);
-    struct ext2_inode parent_inode = getInodeInfo(front.parent_inode_number);
+    struct ext2_inode inode = getInodeInfo(dir_entry->inode);
     std::vector<unsigned int> blocks = GetBlocks(inode);
-    activateInode(inode, dir_entry.inode);
+    activateInode(inode, dir_entry->inode);
     putInodeInto(inode, lost_found_inode);
-    // deleteInodeFrom(inode, parent_inode);
     markBlocksAsUsed(blocks);
   }
 
