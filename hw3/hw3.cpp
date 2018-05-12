@@ -88,26 +88,7 @@ void markBlocksAsUsed(const std::vector<unsigned int>& blocks) {
   super.s_free_blocks_count -= blocks.size();
 }
 
-void bitmap_block_reader() {
-  for (int i = 1; i < super.s_blocks_count; i++) {
-    int j = i;
-    while (j > 9) j -= 10;
-    printf("%d", j);
-  }
-  printf("\n");
-  for (int i = 0; i < super.s_blocks_count; i++) {
-    if (BM_ISSET(i, block_bitmap)) {
-      printf("+");  // in use
-    } else {
-      printf("-");  // empty
-    }
-  }
-  printf("\n");
-  return;
-}
-
-std::vector<unsigned int> printDirectBlocks(struct ext2_inode inode,
-                                            int index) {
+std::vector<unsigned int> printDirectBlocks(struct ext2_inode inode) {
   std::vector<unsigned int> directBlocks;
 
   int count = 0;
@@ -121,12 +102,6 @@ std::vector<unsigned int> printDirectBlocks(struct ext2_inode inode,
     }
   }
 
-  // printf("DIRECT:");
-  // printf("    #: %d", count);
-  // printf("    [");
-  // for (int i = 0; i < count; i++)
-  //   if (directBlocks[i] != -1) printf("%d ", directBlocks[i]);
-  // printf("]\n");
   return directBlocks;
 }
 
@@ -167,9 +142,7 @@ std::vector<unsigned int> readBlockIntoArray(int blockNo,
 }
 
 std::vector<unsigned int> printSingleIndirectBlocks(
-    int blockNo, int index, struct ext2_super_block super, int fd) {
-  int num_of_ptrs = block_size / 4;
-
+    int blockNo, struct ext2_super_block super, int fd) {
   // inode block 12 holds which inode holds directs
   if (blockNo) {
     // printf("SINGLE:");
@@ -178,8 +151,6 @@ std::vector<unsigned int> printSingleIndirectBlocks(
     std::vector<unsigned int> singleIndirectBlocks =
         readBlockIntoArray(blockNo, super, fd);
     singleIndirectBlocks.insert(singleIndirectBlocks.begin(), blockNo);
-
-    int count = singleIndirectBlocks.size();
 
     // print to screen
     // printf("    #: %d", count);
@@ -195,7 +166,7 @@ std::vector<unsigned int> printSingleIndirectBlocks(
 
 // IN PROGRESS, return in if block missing
 std::vector<unsigned int> printDoubleIndirectBlocks(
-    int blockNo, int index, struct ext2_super_block super, int fd) {
+    int blockNo, struct ext2_super_block super, int fd) {
   std::vector<unsigned int> allReachedFromDouble;
   if (blockNo) {
     std::vector<unsigned int> doubleBlock =
@@ -206,7 +177,7 @@ std::vector<unsigned int> printDoubleIndirectBlocks(
       int blockNoOfSingle = doubleBlock[i];
 
       std::vector<unsigned int> local =
-          printSingleIndirectBlocks(blockNoOfSingle, index, super, fd);
+          printSingleIndirectBlocks(blockNoOfSingle, super, fd);
       // local.insert(local.begin(), blockNoOfSingle);
       allReachedFromDouble.insert(allReachedFromDouble.end(), local.begin(),
                                   local.end());
@@ -222,7 +193,7 @@ std::vector<unsigned int> printDoubleIndirectBlocks(
 
 // IN PROGRESS, return in if block missing
 std::vector<unsigned int> printTripleIndirectBlocks(
-    int blockNo, int index, struct ext2_super_block super, int fd) {
+    int blockNo, struct ext2_super_block super, int fd) {
   std::vector<unsigned int> allReachedFromTriple;
   if (blockNo) {
     std::vector<unsigned int> tripleBlock =
@@ -232,7 +203,7 @@ std::vector<unsigned int> printTripleIndirectBlocks(
     for (int i = 0; i < countOfTriples; i++) {
       int blockNoOfDouble = tripleBlock[i];
       std::vector<unsigned int> local =
-          printDoubleIndirectBlocks(blockNoOfDouble, index, super, fd);
+          printDoubleIndirectBlocks(blockNoOfDouble, super, fd);
       allReachedFromTriple.insert(allReachedFromTriple.end(), local.begin(),
                                   local.end());
     }
@@ -290,13 +261,13 @@ std::vector<unsigned int> GetBlocks(struct ext2_inode inode) {
   //   return {};
   // }
 
-  std::vector<unsigned int> directBlocks = printDirectBlocks(inode, 0);
+  std::vector<unsigned int> directBlocks = printDirectBlocks(inode);
   std::vector<unsigned int> singleIndirectBlocks =
-      printSingleIndirectBlocks(inode.i_block[12], 0, super, fd);
+      printSingleIndirectBlocks(inode.i_block[12], super, fd);
   std::vector<unsigned int> doubleIndirectBlocks =
-      printDoubleIndirectBlocks(inode.i_block[13], 0, super, fd);
+      printDoubleIndirectBlocks(inode.i_block[13], super, fd);
   std::vector<unsigned int> tripleIndirectBlocks =
-      printTripleIndirectBlocks(inode.i_block[14], 0, super, fd);
+      printTripleIndirectBlocks(inode.i_block[14], super, fd);
   std::vector<unsigned int> List[] = {directBlocks, singleIndirectBlocks,
                                       doubleIndirectBlocks,
                                       tripleIndirectBlocks};
@@ -304,7 +275,8 @@ std::vector<unsigned int> GetBlocks(struct ext2_inode inode) {
   std::vector<unsigned int> allBlocks = mergeAll(List);
 
   std::cout << "getBlocks(): [";
-  for (int i = 0; i < allBlocks.size(); i++) std::cout << allBlocks[i] << " ";
+  for (size_t i = 0; i < allBlocks.size(); i++)
+    std::cout << allBlocks[i] << " ";
   std::cout << "]" << std::endl;
 
   return allBlocks;
@@ -324,40 +296,6 @@ struct ext2_inode getInodeInfo(unsigned int inodeNo) {
   return inode;
 }
 
-std::vector<struct ext2_dir_entry*> getChildren(struct ext2_inode inode) {
-  unsigned char block[block_size];
-  lseek(fd, BLOCK_OFFSET(inode.i_block[0]), SEEK_SET);
-  read(fd, block, block_size);
-
-  std::vector<struct ext2_dir_entry*> directoryEntries;
-
-  unsigned int size = 0;
-  struct ext2_dir_entry* entry = (struct ext2_dir_entry*)block;
-  while (size < inode.i_size && entry->inode) {
-    const size_t real_len = realDirEntrySize(entry);
-    struct ext2_dir_entry* new_entry = (struct ext2_dir_entry*)malloc(real_len);
-    std::memcpy(new_entry, entry, real_len);
-    printf("    getChildren: %10u %10u %.*s\n", entry->inode, entry->rec_len,
-           entry->name_len, entry->name);
-
-    directoryEntries.push_back(new_entry);
-
-    size += entry->rec_len;
-    entry =
-        (ext2_dir_entry*)((void*)entry + real_len); /* move to the next entry */
-  }
-
-  return directoryEntries;
-}
-
-bool isInTheVector(const std::vector<unsigned int>& vector,
-                   unsigned int element) {
-  for (int i = 0; i < vector.size(); i++) {
-    if (vector[i] == element) return true;
-  }
-  return false;
-}
-
 void putInodeInto(struct ext2_dir_entry* entry_to_put,
                   struct ext2_inode& lost_found_inode) {
   /// printf("BBB: %d %d %d\n", lost_found_inode.i_size,
@@ -367,7 +305,6 @@ void putInodeInto(struct ext2_dir_entry* entry_to_put,
   read(fd, block, block_size);
 
   unsigned int size = 0;
-  unsigned int previousSize = 0;
   const size_t needed_size = realDirEntrySize(entry_to_put);
   struct ext2_dir_entry* entry = (struct ext2_dir_entry*)block;
   while (size < lost_found_inode.i_size && entry->inode) {
@@ -377,14 +314,14 @@ void putInodeInto(struct ext2_dir_entry* entry_to_put,
     const size_t real_len = realDirEntrySize(entry);
     if (entry->rec_len - real_len >= needed_size) {
       struct ext2_dir_entry* new_entry =
-          (struct ext2_dir_entry*)((void*)entry + real_len);
+          (struct ext2_dir_entry*)((char*)entry + real_len);
       memcpy(new_entry, entry_to_put, needed_size);
       new_entry->rec_len = entry->rec_len - real_len;
       entry->rec_len = real_len;
       break;
     }
     size += entry->rec_len;
-    entry = (ext2_dir_entry*)((void*)entry +
+    entry = (ext2_dir_entry*)((char*)entry +
                               entry->rec_len); /* move to the next entry */
   }
 
@@ -428,8 +365,6 @@ int main(void) {
   std::vector<struct ext2_dir_entry*> to_recover;
   to_visit.push(&root_entry);
 
-  bitmap_block_reader();
-
   size_t deleted_file_count = 0;
   size_t digit_count = 1;
   size_t digit_limit = 10;
@@ -472,6 +407,7 @@ int main(void) {
     activateInode(inode, dir_entry->inode);
     putInodeInto(dir_entry, lost_found_inode);
     markBlocksAsUsed(blocks);
+    free(dir_entry);
   }
 
   lseek(fd, BLOCK_OFFSET(group.bg_inode_bitmap), SEEK_SET);
