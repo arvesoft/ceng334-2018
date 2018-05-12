@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <algorithm>
 #include <cstring>
 #include <iostream>
 #include <queue>
@@ -40,7 +41,6 @@ unsigned int block_size = 0;
 #define BLOCK_OFFSET(block) (BASE_OFFSET + (block - 1) * block_size)
 
 struct dir_entry_with_parent {
-  unsigned int parent_inode_number;
   struct ext2_dir_entry* dir_entry;
 };
 
@@ -423,15 +423,14 @@ int main(void) {
   root_entry.inode = 2;
 
   std::unordered_set<unsigned int> visited;
-  std::queue<dir_entry_with_parent> to_visit;
-  std::queue<dir_entry_with_parent> to_recover;
-  to_visit.push({0, &root_entry});
+  std::queue<struct ext2_dir_entry*> to_visit;
+  std::vector<struct ext2_dir_entry*> to_recover;
+  to_visit.push(&root_entry);
 
   bitmap_block_reader();
 
   while (!to_visit.empty()) {
-    const auto front = to_visit.front();
-    const auto dir_entry = front.dir_entry;
+    const auto dir_entry = to_visit.front();
     to_visit.pop();
     // add to visited inode no; so it does not loop to infinity
     visited.insert(dir_entry->inode);
@@ -441,14 +440,14 @@ int main(void) {
       for (const auto child : children) {
         // if it is visited before, do not add to queue
         if (visited.find(child->inode) != visited.end()) continue;
-        to_visit.push({dir_entry->inode, child});
+        to_visit.push(child);
       }
     } else {
       if (isDeleted(inode)) {
         printf("%.*s\n", dir_entry->name_len, dir_entry->name);
         std::vector<unsigned int> blocks = GetBlocks(inode);
         if (isReachable(blocks)) {
-          to_recover.push(front);
+          to_recover.push_back(dir_entry);
         }
       }
     }
@@ -457,12 +456,11 @@ int main(void) {
 
   std::cout << "#\n";
 
+  std::sort(to_recover.begin(), to_recover.end());
+
   struct ext2_inode lost_found_inode = getInodeInfo(11);
-  while (!to_recover.empty()) {
-    const auto front = to_recover.front();
-    const auto dir_entry = front.dir_entry;
+  for (const auto dir_entry : to_recover) {
     printf("%.*s\n", dir_entry->name_len, dir_entry->name);
-    to_recover.pop();
     struct ext2_inode inode = getInodeInfo(dir_entry->inode);
     std::vector<unsigned int> blocks = GetBlocks(inode);
     activateInode(inode, dir_entry->inode);
