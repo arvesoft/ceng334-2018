@@ -50,11 +50,15 @@ struct ext2_group_desc group;
 bmap* block_bitmap;
 bmap* inode_bitmap;
 
+size_t realDirEntrySize(unsigned int name_len) {
+  return (8 + name_len + 3) & (~3);
+}
+
 size_t realDirEntrySize(struct ext2_dir_entry* entry) {
   return (8 + entry->name_len + 3) & (~3);
 }
 
-bool isDeleted(struct ext2_inode& inode) {
+bool isDeleted(const struct ext2_inode& inode) {
   // std::cout << "DeletionControl" << "\n";
   // std::cout << inode.i_mode << " " << inode.i_dtime << " " << inode.i_size <<
   // std::endl;
@@ -407,9 +411,6 @@ int main(void) {
   lseek(fd, BASE_OFFSET + block_size, SEEK_SET);
   read(fd, &group, sizeof(group));
 
-  unsigned int group_count =
-      1 + (super.s_blocks_count - 1) / super.s_blocks_per_group;
-
   // read block bitmap
   block_bitmap = new bmap[block_size];
   lseek(fd, BLOCK_OFFSET(group.bg_block_bitmap), SEEK_SET);
@@ -429,33 +430,38 @@ int main(void) {
 
   bitmap_block_reader();
 
-  while (!to_visit.empty()) {
-    const auto dir_entry = to_visit.front();
-    to_visit.pop();
-    // add to visited inode no; so it does not loop to infinity
-    visited.insert(dir_entry->inode);
-    struct ext2_inode inode = getInodeInfo(dir_entry->inode);
-    if (S_ISDIR(inode.i_mode)) {
-      std::vector<struct ext2_dir_entry*> children = getChildren(inode);
-      for (const auto child : children) {
-        // if it is visited before, do not add to queue
-        if (visited.find(child->inode) != visited.end()) continue;
-        to_visit.push(child);
-      }
-    } else {
+  size_t deleted_file_count = 0;
+  size_t digit_count = 1;
+  size_t digit_limit = 10;
+  for (size_t i = 0; i < super.s_inodes_per_group; i++) {
+    const unsigned int inode_no = super.s_first_ino + i;
+    const struct ext2_inode inode = getInodeInfo(inode_no);
+    if (S_ISREG(inode.i_mode)) {
       if (isDeleted(inode)) {
+        deleted_file_count++;
+        if (deleted_file_count >= digit_limit) {
+          digit_limit *= 10;
+          digit_count++;
+        }
+        struct ext2_dir_entry* dir_entry =
+            (struct ext2_dir_entry*)malloc(realDirEntrySize(4 + digit_count));
+        sprintf(dir_entry->name, "file%zu", deleted_file_count);
+        dir_entry->name_len = 4 + digit_count;
+        dir_entry->inode = inode_no;
+        dir_entry->file_type = EXT2_FT_REG_FILE;
         printf("%.*s\n", dir_entry->name_len, dir_entry->name);
+
         std::vector<unsigned int> blocks = GetBlocks(inode);
         if (isReachable(blocks)) {
           to_recover.push_back(dir_entry);
         }
       }
     }
-    std::cout << std::endl;
   }
 
   std::cout << "#\n";
 
+  // TODO: Sort according to deletion time.
   std::sort(to_recover.begin(), to_recover.end());
 
   struct ext2_inode lost_found_inode = getInodeInfo(11);
