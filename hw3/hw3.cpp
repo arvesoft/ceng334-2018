@@ -222,10 +222,10 @@ bool isReachable(const std::vector<unsigned int>& blocksArray) {
     int blockIndex = blocksArray[i];
     // note the -1 part
     if (!BM_ISSET(blockIndex - 1, block_bitmap)) {
-      printf("REACHED: %d\n", blockIndex);
+      // printf("REACHED: %d\n", blockIndex);
       reachableCount++;
     } else {
-      printf("CANNOT: %d\n", blockIndex);
+      // printf("CANNOT: %d\n", blockIndex);
     }
   }
   if (reachableCount == count) {
@@ -248,10 +248,10 @@ std::vector<unsigned int> mergeAll(std::vector<unsigned int> List[]) {
 
 std::vector<unsigned int> GetBlocks(struct ext2_inode inode) {
   // printf("Inode No: %d\n", index);
-  if (S_ISREG(inode.i_mode))
+  /*if (S_ISREG(inode.i_mode))
     printf("FILE\n ");
   else if (S_ISDIR(inode.i_mode))
-    printf("FOLDER\n ");
+    printf("FOLDER\n ");*/
 
   // printf("Size: %d, #Blocks: %u\n", inode.i_size,
   //        inode.i_blocks / (block_size / 512));
@@ -280,8 +280,6 @@ std::vector<unsigned int> GetBlocks(struct ext2_inode inode) {
   std::cout << "]" << std::endl;
 
   return allBlocks;
-
-  // printf("\n");
 }
 
 struct ext2_inode getInodeInfo(unsigned int inodeNo) {
@@ -291,8 +289,6 @@ struct ext2_inode getInodeInfo(unsigned int inodeNo) {
             (inodeNo - 1) * sizeof(struct ext2_inode),
         SEEK_SET);
   read(fd, &inode, sizeof(struct ext2_inode));
-  printf("getInodeInfo(%d): %d %d %d %d %d\n", inodeNo, inode.i_size,
-         inode.i_mode, inode.i_blocks, inode.i_flags, inode.i_links_count);
   return inode;
 }
 
@@ -308,8 +304,9 @@ void putInodeInto(struct ext2_dir_entry* entry_to_put,
   const size_t needed_size = realDirEntrySize(entry_to_put);
   struct ext2_dir_entry* entry = (struct ext2_dir_entry*)block;
   while (size < lost_found_inode.i_size && entry->inode) {
-    printf("    putInodeInto: %10u %10u %.*s\n", entry->inode, entry->rec_len,
-           entry->name_len, entry->name);
+    // printf("    putInodeInto: %10u %10u %.*s\n", entry->inode,
+    // entry->rec_len,
+    //       entry->name_len, entry->name);
 
     const size_t real_len = realDirEntrySize(entry);
     if (entry->rec_len - real_len >= needed_size) {
@@ -329,8 +326,8 @@ void putInodeInto(struct ext2_dir_entry* entry_to_put,
   write(fd, block, block_size);
 }
 
-int main(void) {
-  if ((fd = open(IMAGE, O_RDWR)) < 0) {
+int main(int, char** argv) {
+  if ((fd = open(argv[1], O_RDWR)) < 0) {
     perror(IMAGE);
     exit(1);
   }
@@ -406,12 +403,12 @@ int main(void) {
     const auto dir_entry = front.second;
     struct ext2_inode inode = getInodeInfo(dir_entry->inode);
     const std::vector<unsigned int> blocks = GetBlocks(inode);
+    printf("dtime:%u %.*s\n", front.first, dir_entry->name_len,
+           dir_entry->name);
     if (!isReachable(blocks)) {
       continue;
     }
 
-    printf("dtime:%u %.*s\n", front.first, dir_entry->name_len,
-           dir_entry->name);
     activateInode(inode, dir_entry->inode);
     putInodeInto(dir_entry, lost_found_inode);
     markBlocksAsUsed(blocks);
