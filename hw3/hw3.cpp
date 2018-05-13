@@ -362,7 +362,7 @@ int main(void) {
 
   std::unordered_set<unsigned int> visited;
   std::queue<struct ext2_dir_entry*> to_visit;
-  std::vector<struct ext2_dir_entry*> to_recover;
+  std::vector<std::pair<unsigned int, struct ext2_dir_entry*>> to_recover;
   to_visit.push(&root_entry);
 
   size_t deleted_file_count = 0;
@@ -386,24 +386,32 @@ int main(void) {
         dir_entry->file_type = EXT2_FT_REG_FILE;
         printf("%.*s\n", dir_entry->name_len, dir_entry->name);
 
-        std::vector<unsigned int> blocks = GetBlocks(inode);
+        const std::vector<unsigned int> blocks = GetBlocks(inode);
         if (isReachable(blocks)) {
-          to_recover.push_back(dir_entry);
+          to_recover.push_back({inode.i_dtime, dir_entry});
         }
       }
     }
   }
-
   std::cout << "#\n";
 
-  // TODO: Sort according to deletion time.
-  std::sort(to_recover.begin(), to_recover.end());
+  std::make_heap(to_recover.begin(), to_recover.end());
 
   struct ext2_inode lost_found_inode = getInodeInfo(11);
-  for (const auto dir_entry : to_recover) {
-    printf("%.*s\n", dir_entry->name_len, dir_entry->name);
+  while (!to_recover.empty()) {
+    const auto front = to_recover.front();
+    std::pop_heap(to_recover.begin(), to_recover.end());
+    to_recover.pop_back();
+
+    const auto dir_entry = front.second;
     struct ext2_inode inode = getInodeInfo(dir_entry->inode);
-    std::vector<unsigned int> blocks = GetBlocks(inode);
+    const std::vector<unsigned int> blocks = GetBlocks(inode);
+    if (!isReachable(blocks)) {
+      continue;
+    }
+
+    printf("dtime:%u %.*s\n", front.first, dir_entry->name_len,
+           dir_entry->name);
     activateInode(inode, dir_entry->inode);
     putInodeInto(dir_entry, lost_found_inode);
     markBlocksAsUsed(blocks);
